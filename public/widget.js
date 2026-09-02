@@ -1,21 +1,25 @@
 /**
- * Jennifer Furniture WebMCP Next-Gen Luxury Voice Concierge
- * Apple Intelligence / Linear-Grade Glassmorphism Aesthetic
- * Live on Shopify Plus (JF Staging) & Vercel
+ * Jennifer Furniture WebMCP Next-Gen Luxury Voice Concierge & Header Search Integration
+ * Features:
+ * 1. Apple Intelligence / Siri Cosmic Voice Orb (Bottom Right)
+ * 2. Embedded Voice Mic & Live AI Predictive Search inside the Shopify Search Bar
+ * 3. Glassmorphic Bento Cards, Spatial Clearance Meter, and 1-Click Buy
+ * 4. W3C document.modelContext & OpenAI OpenAPI compatibility
  */
 (function() {
-  if (window.__JENNIFER_VOICE_WEBMCP_V2__) return;
-  window.__JENNIFER_VOICE_WEBMCP_V2__ = true;
+  if (window.__JENNIFER_VOICE_WEBMCP_V3__) return;
+  window.__JENNIFER_VOICE_WEBMCP_V3__ = true;
 
-  // Remove any legacy widgets
-  var oldWidget = document.getElementById("jmcp-widget-container") || document.getElementById("jvoice-container");
-  if (oldWidget && oldWidget.parentNode) oldWidget.parentNode.removeChild(oldWidget);
+  // Cleanup legacy instances
+  var oldNodes = document.querySelectorAll("#jmcp-widget-container, #jvoice-container, .jvoice-search-mic-btn");
+  oldNodes.forEach(function(n) { if (n.parentNode) n.parentNode.removeChild(n); });
 
   var API_BASE = "https://jennifer-webmcp.vercel.app";
   var isVoiceMuted = false;
   var isListening = false;
   var isSpeaking = false;
   var recognition = null;
+  var activeTargetInput = null;
 
   var sessionContext = {
     chatHistory: [],
@@ -108,6 +112,23 @@
     .jvoice-container {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       -webkit-font-smoothing: antialiased;
+    }
+
+    /* Embedded Search Bar Mic Button */
+    .jvoice-search-mic-btn {
+      position: absolute; right: 48px; top: 50%; transform: translateY(-50%);
+      z-index: 15; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.2));
+      border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 50%;
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      color: #6366f1; cursor: pointer; transition: all 0.25s ease; font-size: 15px;
+    }
+    .jvoice-search-mic-btn:hover {
+      background: linear-gradient(135deg, #6366f1, #a855f7); color: #ffffff;
+      transform: translateY(-50%) scale(1.12); box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    }
+    .jvoice-search-mic-btn.jvoice-search-listening {
+      background: linear-gradient(135deg, #ef4444, #f97316); color: white;
+      animation: jvoice-orb-pulse 1.2s infinite; border-color: #ef4444;
     }
 
     /* Floating Apple Intelligence Orb */
@@ -287,20 +308,6 @@
       box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); transition: all 0.2s ease;
     }
     .jvoice-btn-checkout:hover { transform: scale(1.03); }
-
-    /* Spatial Fit Scorecard Visualizer */
-    .jvoice-fit-card {
-      background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25);
-      border-radius: 12px; padding: 14px; margin-top: 8px;
-    }
-    .jvoice-fit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    .jvoice-fit-verdict { font-weight: 700; color: #10b981; font-size: 13px; }
-    .jvoice-fit-score {
-      font-size: 12px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
-      background: #10b981; color: #064e3b; padding: 2px 8px; border-radius: 9999px;
-    }
-    .jvoice-fit-meter-wrap { height: 6px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden; margin: 8px 0; }
-    .jvoice-fit-meter-bar { height: 100%; background: linear-gradient(90deg, #10b981, #38bdf8); border-radius: 9999px; }
 
     /* Suggestion Pills */
     .jvoice-chips-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
@@ -529,7 +536,7 @@
     });
   }
 
-  function startVoiceListening() {
+  function startVoiceListening(targetInputElement) {
     var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
       alert("Voice input is supported in Chrome, Safari, and modern mobile browsers.");
@@ -541,26 +548,30 @@
       return;
     }
 
+    activeTargetInput = targetInputElement || null;
     recognition = new SpeechRec();
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
     recognition.onstart = function() {
       isListening = true;
       var orb = document.getElementById("jvoice-orb-btn");
-      var micBtn = document.getElementById("jvoice-mic-btn");
+      var micBtns = document.querySelectorAll("#jvoice-mic-btn, .jvoice-search-mic-btn");
       if (orb) orb.classList.add("jvoice-listening");
-      if (micBtn) micBtn.innerHTML = '🛑';
+      micBtns.forEach(function(b) { b.classList.add("jvoice-search-listening"); b.innerHTML = '🛑'; });
       showHUD("🎙️ Listening... Speak naturally now", false);
     };
 
     recognition.onresult = function(event) {
       var speechResult = event.results[0][0].transcript;
-      showHUD("🗣️ \"" + speechResult + "\"", false);
-      var drawer = document.getElementById("jvoice-drawer");
-      if (drawer) drawer.classList.add("jvoice-open");
-      executeUserQuery(speechResult);
+      if (activeTargetInput) activeTargetInput.value = speechResult;
+      if (event.results[0].isFinal) {
+        showHUD("🗣️ \"" + speechResult + "\"", false);
+        var drawer = document.getElementById("jvoice-drawer");
+        if (drawer) drawer.classList.add("jvoice-open");
+        executeUserQuery(speechResult);
+      }
     };
 
     recognition.onerror = function(e) {
@@ -570,12 +581,56 @@
     recognition.onend = function() {
       isListening = false;
       var orb = document.getElementById("jvoice-orb-btn");
-      var micBtn = document.getElementById("jvoice-mic-btn");
+      var micBtns = document.querySelectorAll("#jvoice-mic-btn, .jvoice-search-mic-btn");
       if (orb) orb.classList.remove("jvoice-listening");
-      if (micBtn) micBtn.innerHTML = '🎙️';
+      micBtns.forEach(function(b) { b.classList.remove("jvoice-search-listening"); b.innerHTML = '🎙️'; });
     };
 
     recognition.start();
+  }
+
+  // Inject Voice Mic into all theme search bars
+  function injectSearchMics() {
+    var searchInputs = document.querySelectorAll('input[type="search"], input[name="q"], .search__input, #Search-In-Modal, #Search-In-Template');
+    searchInputs.forEach(function(input) {
+      if (input.dataset.jvoiceInjected) return;
+      input.dataset.jvoiceInjected = "true";
+
+      var parent = input.parentElement;
+      if (parent) {
+        var computedPos = window.getComputedStyle(parent).position;
+        if (computedPos === "static") parent.style.position = "relative";
+
+        var micBtn = document.createElement("button");
+        micBtn.type = "button";
+        micBtn.className = "jvoice-search-mic-btn";
+        micBtn.title = "Speak with Jennifer Furniture AI Voice Agent";
+        micBtn.innerHTML = '🎙️';
+
+        micBtn.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          startVoiceListening(input);
+        });
+
+        parent.appendChild(micBtn);
+      }
+
+      // Handle Enter key in search bar to execute via WebMCP
+      input.addEventListener("keydown", function(e) {
+        if (e.key === "Enter" && input.value.trim().length > 3) {
+          var val = input.value.trim();
+          var lower = val.toLowerCase();
+          if (lower.includes("fit") || lower.includes("dimension") || lower.includes("under") || lower.includes("bundle") || lower.includes("compare")) {
+            e.preventDefault();
+            e.stopPropagation();
+            var drawer = document.getElementById("jvoice-drawer");
+            if (drawer) drawer.classList.add("jvoice-open");
+            executeUserQuery(val);
+          }
+        }
+      });
+    });
   }
 
   function init() {
@@ -636,7 +691,7 @@
       <div class="jvoice-messages" id="jvoice-msg-container">
         <div class="jvoice-msg jvoice-msg-assistant">
           <div class="jvoice-tool-badge">✨ WebMCP Live Connected</div>
-          Welcome! I am your <strong>Voice Concierge</strong>. Tap the microphone 🎙️ or choose an action below to drive the store live:
+          Welcome! I am your <strong>Voice Concierge</strong>. Tap the microphone 🎙️ in the search bar or speak below to drive the store live:
           
           <div class="jvoice-chips-wrap" style="margin-top:14px;">
             <button class="jvoice-chip" data-chip="Find in-stock sofas under $2,000">🛋️ In-Stock Sofas &lt; $2k</button>
@@ -667,7 +722,9 @@
       startVoiceListening();
     });
 
-    micBtn.addEventListener("click", startVoiceListening);
+    micBtn.addEventListener("click", function() {
+      startVoiceListening(inputEl);
+    });
 
     muteBtn.addEventListener("click", function() {
       isVoiceMuted = !isVoiceMuted;
@@ -709,6 +766,10 @@
         triggerNativeShopifyCart(btn.dataset.variant, btn.dataset.title);
       }
     });
+
+    // Inject Search Bar Mics immediately & watch for dynamic modals
+    injectSearchMics();
+    setInterval(injectSearchMics, 1000);
   }
 
   if (document.readyState === "loading") {
