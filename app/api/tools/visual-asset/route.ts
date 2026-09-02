@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
-import { GET_PRODUCT_BY_HANDLE_QUERY, GET_PRODUCT_BY_ID_QUERY } from "@/lib/shopify/queries";
+import { GET_PRODUCT_DETAILS_QUERY, SEARCH_PRODUCTS_QUERY } from "@/lib/shopify/queries";
 import { normalizeProductDetailed } from "@/lib/shopify/normalizer";
 import { fetchImageAsBase64, buildGeometryPreservationPrompt } from "@/lib/shopify/image-proxy";
 import { ProductDetailed } from "@/lib/types/shopify";
@@ -37,13 +37,21 @@ export async function POST(request: NextRequest) {
 
     try {
       if (handle) {
-        const res = await shopifyGraphQL<any>(GET_PRODUCT_BY_HANDLE_QUERY, { handle });
-        if (res?.data?.productByHandle) {
-          detailed = normalizeProductDetailed(res.data.productByHandle);
+        const searchRes = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
+          query: `handle:${handle}`,
+          first: 1,
+        });
+        const firstEdge = searchRes?.data?.products?.edges?.[0];
+        if (firstEdge) {
+          const id = firstEdge.node.id;
+          const res = await shopifyGraphQL<any>(GET_PRODUCT_DETAILS_QUERY, { id });
+          if (res?.data?.product) {
+            detailed = normalizeProductDetailed(res.data.product);
+          }
         }
       } else if (productId) {
         const fullId = productId.startsWith("gid://") ? productId : `gid://shopify/Product/${productId}`;
-        const res = await shopifyGraphQL<any>(GET_PRODUCT_BY_ID_QUERY, { id: fullId });
+        const res = await shopifyGraphQL<any>(GET_PRODUCT_DETAILS_QUERY, { id: fullId });
         if (res?.data?.product) {
           detailed = normalizeProductDetailed(res.data.product);
         }
