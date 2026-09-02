@@ -1,0 +1,16 @@
+version: "3.8"
+
+services:
+  webmcp-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jennifer-webmcp
+    restart: always
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
