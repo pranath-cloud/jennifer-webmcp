@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
             variantId: "48745536979112",
             image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
             inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979112", quantity: 1 }], "WEBMCP10")
+            checkoutUrl: generateCartPermalink([{ variantId: "48745536979112", quantity: 1 }], "WEBMCP10").checkoutUrl
           },
           {
             id: "gid://shopify/Product/8123991209381",
@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
             variantId: "44910283948192",
             image: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&w=600&q=80",
             inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "44910283948192", quantity: 1 }], "WEBMCP10")
+            checkoutUrl: generateCartPermalink([{ variantId: "44910283948192", quantity: 1 }], "WEBMCP10").checkoutUrl
           }
         ];
       } else if (isLeather) {
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
             variantId: "48745536979201",
             image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80",
             inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979201", quantity: 1 }], "WEBMCP10")
+            checkoutUrl: generateCartPermalink([{ variantId: "48745536979201", quantity: 1 }], "WEBMCP10").checkoutUrl
           },
           {
             id: "gid://shopify/Product/7192849182390",
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
             variantId: "43891029384918",
             image: "https://images.unsplash.com/photo-1550581190-9c1c48d21d6c?auto=format&fit=crop&w=600&q=80",
             inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "43891029384918", quantity: 1 }], "WEBMCP10")
+            checkoutUrl: generateCartPermalink([{ variantId: "43891029384918", quantity: 1 }], "WEBMCP10").checkoutUrl
           }
         ];
       } else {
@@ -136,7 +136,7 @@ export async function POST(request: NextRequest) {
             variantId: "48745536979201",
             image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80",
             inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979201", quantity: 1 }], "WEBMCP10")
+            checkoutUrl: generateCartPermalink([{ variantId: "48745536979201", quantity: 1 }], "WEBMCP10").checkoutUrl
           },
           {
             id: "gid://shopify/Product/7492144791720",
@@ -146,17 +146,18 @@ export async function POST(request: NextRequest) {
             variantId: "48745536979112",
             image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
             inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979112", quantity: 1 }], "WEBMCP10")
+            checkoutUrl: generateCartPermalink([{ variantId: "48745536979112", quantity: 1 }], "WEBMCP10").checkoutUrl
           }
         ];
       }
 
       const primary = recs[0];
-      const bundlePermalink = generateCartPermalink([
+      const bundleResult = generateCartPermalink([
         { variantId: primary.variantId, quantity: 1 },
         { variantId: "48745536979113", quantity: 1 },
         { variantId: "48745536979114", quantity: 1 }
       ], "WEBMCP15");
+      const bundlePermalink = bundleResult.checkoutUrl;
 
       return NextResponse.json({
         success: true,

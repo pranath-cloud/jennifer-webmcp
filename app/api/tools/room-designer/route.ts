@@ -249,12 +249,8 @@ export async function POST(request: NextRequest) {
       { variantId: coordinatedAccents[1].variantId, quantity: 1 },
     ];
 
-    const totalRetail = rawPrimaryPrice + coordinatedAccents[0].price + coordinatedAccents[1].price;
-    const bundleDiscountAmount = totalRetail * 0.15;
-    const bundledPrice = totalRetail - bundleDiscountAmount;
-
-    const bundleCheckoutUrl = generateCartPermalink(bundleItems, "WEBMCP15");
-    const primaryCheckoutUrl = generateCartPermalink([{ variantId: primaryVariantId, quantity: 1 }], "WEBMCP10");
+    const bundleCheckoutResult = generateCartPermalink(bundleItems, "WEBMCP15");
+    const primaryCheckoutResult = generateCartPermalink([{ variantId: primaryVariantId, quantity: 1 }], "WEBMCP10");
 
     return NextResponse.json({
       success: true,
@@ -264,7 +260,7 @@ export async function POST(request: NextRequest) {
         clearanceScorecard,
         primaryRecommendation: {
           ...primarySofa,
-          checkoutUrl: primaryCheckoutUrl,
+          checkoutUrl: primaryCheckoutResult.checkoutUrl,
         },
         alternativeOptions: matchedProducts.slice(1),
         coordinatedAccents,
@@ -274,7 +270,7 @@ export async function POST(request: NextRequest) {
           bundleDiscountPercent: 15,
           savingsAmount: Number(bundleDiscountAmount.toFixed(2)),
           finalBundlePrice: Number(bundledPrice.toFixed(2)),
-          bundleCheckoutUrl
+          bundleCheckoutUrl: bundleCheckoutResult.checkoutUrl
         }
       }
     }, { headers: corsHeaders });
