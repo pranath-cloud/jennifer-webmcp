@@ -79,6 +79,7 @@ export interface ProductDetailed extends ProductSummary {
   images: {
     url: string;
     altText?: string | null;
+    imageRole?: ImageRole;
   }[];
 }
 
