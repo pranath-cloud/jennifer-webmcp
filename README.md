@@ -1,152 +1,91 @@
-# AgentCart — WebMCP for Shopify (Jennifer Furniture)
+# 🛋️ Jennifer Furniture WebMCP: Agentic E-Commerce Platform
 
-> **Agent-Native E-Commerce Platform built for the OpenAI WebMCP Challenge**  
-> Demonstrating zero-scraping, typed tool invocation, real-time variant stock verification, side-by-side spec comparisons, and direct 1-click Shopify checkout handoffs over the W3C Web Model Context Protocol (`document.modelContext.registerTool`).
+> **Submitted to [The WebMCP Challenge](https://webmcp.devpost.com/) by Devpost, OpenAI, Shopify, Google Chrome, Vercel & Cloudflare.**
 
----
-
-## 🌟 The Innovation: Why WebMCP?
-
-Today, when an AI shopping agent tries to purchase furniture on standard websites:
-* ❌ It parses bloated, unstructured HTML (5MB+ of DOM and scripts).
-* ❌ It gets stuck on dynamic swatch pickers, popups, and carousel drawers.
-* ❌ It hallucinates out-of-stock items because variant stock is hidden in AJAX payloads.
-* ❌ It struggles with checkout handoffs and credit card DOM scraping.
-
-**With AgentCart & WebMCP:**
-* ✅ **Zero Scraping:** The website exposes 5 typed JavaScript tools directly to the browser's `document.modelContext`.
-* ✅ **Real-Time Variant Stock:** Agents verify exact color, size, and layout inventory before recommending products.
-* ✅ **Dimensional & Material Comparison:** Automatically compiles aligned specification matrices from Shopify metafields.
-* ✅ **1-Click Checkout Handoff:** Generates direct Shopify Cart Permalinks that transfer the shopping session seamlessly to secure checkout.
-* ✅ **Human-in-the-Loop Collaboration:** The user watches live visual UI updates as the agent reasons and executes tools.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?logo=vercel)](https://jennifer-webmcp.vercel.app)
+[![Shopify Plus](https://img.shields.io/badge/Shopify%20Plus-Staging%20Live-96bf48?logo=shopify)](https://jenniferfurniturestaging.myshopify.com)
+[![Custom GPT](https://img.shields.io/badge/ChatGPT-Custom%20GPT%20Live-10a37f?logo=openai)](https://chatgpt.com/g/g-6a97eb82262c8191a722beb4ea82173d-jennifer-furniture-webmcp-co-pilot)
 
 ---
 
-## 🏗️ Architecture
+## 🌟 Executive Summary
 
-```
-                    ┌───────────────────────────────┐
-                    │           AI AGENT            │
-                    │  (ChatGPT / Chrome / Tester)  │
-                    └───────────────┬───────────────┘
-                                    │
-                                    │ 1. Discovers tools via document.modelContext
-                                    │ 2. Invokes tool with structured JSON
-                                    ▼
-                 ┌────────────────────────────────────┐
-                 │       WEBMCP FRONTEND LAYER        │
-                 │      (Jennifer Furniture App)      │
-                 │                                    │
-                 │ • Polyfill & Tool Registration     │
-                 │ • Tool Schemas & Input Validation  │
-                 │ • Real-time UI State Synchronizer  │
-                 │ • Returns MCP Content Blocks       │
-                 └──────────────────┬─────────────────┘
-                                    │
-                                    │ Internal HTTP POST (/api/products/search, etc.)
-                                    ▼
-                 ┌────────────────────────────────────┐
-                 │     SECURE BACKEND INTEGRATION     │
-                 │           (Next.js / Node)         │
-                 │                                    │
-                 │ • Environment Secret Isolation     │
-                 │ • Query Builder (Lucene Syntax)    │
-                 │ • Specification & Metafield Parser │
-                 │ • Variant Matcher & Permalink Gen  │
-                 └──────────────────┬─────────────────┘
-                                    │
-                                    │ HTTPS GraphQL / Cart Permalinks
-                                    ▼
-                 ┌────────────────────────────────────┐
-                 │       SHOPIFY PLUS STAGING         │
-                 │   (jenniferfurniturestaging)       │
-                 │                                    │
-                 │ • 14,447 Catalog Items             │
-                 │ • Real-Time Variant Inventory      │
-                 │ • Shopify Checkout Engine          │
-                 └────────────────────────────────────┘
+**Jennifer Furniture WebMCP** transforms a live 14,447-product luxury furniture catalog into a high-performance, agent-native commerce platform. 
+
+Instead of leaving AI agents to scrape messy HTML and hallucinate stock or dimensions, this platform implements the **W3C Model Context Protocol (`document.modelContext`)** and **OpenAI OpenAPI MCP Standard**, enabling autonomous shopping agents and on-site voice concierges to:
+1. **Search & Verify Real-Time Inventory** across dual-warehouse logistics.
+2. **Calculate Architectural Spatial Fit & Walkway Clearance** (verifying the standard 30–36 inch walkway clearance rule).
+3. **Execute Deep Spec Comparisons** (kiln-dried hardwood frames, cushion density, warranties).
+4. **Assemble Coordinated 3-Piece Living Room Bundles** with automated 15% discount permalinks.
+5. **Complete 1-Click Cart Permalinks** pre-loaded with variant IDs and discount codes.
+
+---
+
+## 🏗️ Architecture & Dual-Engine Ecosystem
+
+```mermaid
+flowchart TD
+    subgraph Agents["Autonomous Agents & Shopper Interfaces"]
+        A1["🤖 ChatGPT Custom GPT<br/>(Explore GPTs / Actions)"]
+        A2["🎙️ On-Site Voice Concierge<br/>(Speech-to-Speech + Laser Autopilot)"]
+        A3["⚡ Google Chrome 149+<br/>(W3C document.modelContext)"]
+    end
+
+    subgraph WebMCP["W3C WebMCP & OpenAPI Platform (Vercel)"]
+        M1["find_products_by_constraints"]
+        M2["calculate_room_fit_and_clearance"]
+        M3["compare_products_deep_matrix"]
+        M4["build_coordinated_room_bundle"]
+        M5["check_variant_availability"]
+        M6["create_checkout_handoff"]
+    end
+
+    subgraph Shopify["Shopify Plus Storefront & Dual Warehouse"]
+        S1["14,447 Live Active SKUs"]
+        S2["Dual-Warehouse Availability Matching"]
+        S3["Direct Cart Permalinks & Native Cart Drawer"]
+    end
+
+    Agents ==> WebMCP ==> Shopify
 ```
 
 ---
 
-## 🛠️ The 5 WebMCP Capabilities
+## 🛠️ Registered WebMCP Tools
 
-| Tool Name | Description | Key Inputs | Key Outputs |
-| :--- | :--- | :--- | :--- |
-| `find_products_by_constraints` | Searches in-stock furniture by category, price bounds, materials, features, and vendor. | `category`, `max_price`, `material`, `features`, `in_stock_only` | `products: [{ id, title, price, inStock, colors }]` |
-| `get_product_details` | Fetches deep specs, parsed dimensions, fabric details, and complete variant matrix. | `product_id` / `handle` | `product: { specifications, variants, options, warranty }` |
-| `check_variant_availability` | Verifies real-time stock for specific color, size, and layout combinations. | `product_id`, `selected_options: { Color: "Gray" }` | `isAvailable: true, matchedVariant: { id, price, inventoryQuantity }` |
-| `compare_products` | Generates an aligned side-by-side comparison matrix across 2–4 products. | `product_ids: ["id1", "id2"]` | `comparisonMatrix: { products, summaryRecommendation, bestValueId }` |
-| `create_checkout_handoff` | Converts selected variants into an instant 1-click Shopify Cart Permalink URL. | `items: [{ variant_id, quantity }]`, `discount_code` | `checkoutUrl: "https://...myshopify.com/cart/..."` |
-
----
-
-## 🚀 Getting Started
-
-### 1. Prerequisites
-* Node.js v18+ (tested on Node.js v22)
-* Shopify Staging Store credentials (`SHOPIFY_SHOP_NAME`, `SHOPIFY_ACCESS_TOKEN`)
-
-### 2. Setup & Installation
-```bash
-# Clone the repository
-git clone https://github.com/your-repo/agentcart-webmcp.git
-cd agentcart-webmcp
-
-# Install dependencies
-npm install
-
-# Configure environment variables in .env.local
-SHOPIFY_SHOP_NAME=jenniferfurniturestaging
-SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-SHOPIFY_API_VERSION=2024-04
-```
-
-### 3. Run Development Server
-```bash
-npm run dev
-```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+| Tool Name | Type | Description |
+| :--- | :---: | :--- |
+| `find_products_by_constraints` | Consumer | Filters 14,447 products by category, material, style, and budget with live stock verification. |
+| `calculate_room_fit_and_clearance` | Spatial | Calculates walking clearance (30"+ standard) and side margins for given room dimensions. |
+| `compare_products_deep_matrix` | Spec | Deep comparison matrix across frame materials, cushion densities, and warranties. |
+| `build_coordinated_room_bundle` | Bundle | Assembles matching 3-piece suites with instant 15% bundle discount permalinks. |
+| `check_variant_availability` | Inventory | Verifies exact variant color, size, and layout stock. |
+| `create_checkout_handoff` | Commerce | Generates 1-click direct Shopify Cart Permalinks. |
+| `get_store_revenue_and_analytics` | Merchant | Real-time sales analytics and agent conversion rates. |
+| `get_inventory_health_and_restock_alerts` | Merchant | Scans catalog for restock thresholds and supply risks. |
 
 ---
 
-## 🧪 Testing the WebMCP Integration
+## 🚀 Live Demos for Judges
 
-### Method 1: Using the Built-In Agent Playground (Recommended for Judges)
-1. Open [http://localhost:3000](http://localhost:3000).
-2. Look at the top **Interactive WebMCP Agent Playground** bar.
-3. Click the 1-click scenario button: **"Sleeper Sectional under $2k"**.
-4. Watch the agent execute the 4-step workflow:
-   - **Step 1:** Discovers and calls `find_products_by_constraints`. Product grid updates in real-time.
-   - **Step 2:** Calls `compare_products`. Comparison Modal pops up with aligned dimensions and specs.
-   - **Step 3:** Calls `check_variant_availability`. Verifies live inventory for the selected color.
-   - **Step 4:** Calls `create_checkout_handoff`. Opens the Checkout Drawer with a verified Shopify cart permalink!
-5. Click **"Agent Telemetry HUD"** in the top right corner to inspect the live event stream, tool schemas, latency (ms), and JSON payloads.
+### 1️⃣ Live Storefront (Shopify Staging)
+* **URL**: [https://jenniferfurniturestaging.myshopify.com](https://jenniferfurniturestaging.myshopify.com)
+* **Voice Concierge**: Tap the **Glowing Voice Orb `🎙️`** in the bottom right corner and speak naturally!
 
-### Method 2: Inspecting with Browser DevTools / Model Context Tool Inspector
-In the browser console:
-```javascript
-// Check registered tools
-console.log(document.modelContext.getRegisteredTools());
-
-// Execute a tool directly via WebMCP
-const results = await document.modelContext.executeTool("find_products_by_constraints", {
-  category: "sectional",
-  max_price: 2000,
-  in_stock_only: true
-});
-console.log(JSON.parse(results.content[0].text));
-```
-
-### Method 3: Automated Integration Test Suite
-```bash
-node test_live_api.mjs
-```
-Runs all 5 tool endpoints against the live 14,447-product catalog on Shopify staging.
+### 2️⃣ ChatGPT Custom Action (OpenAI WebMCP)
+* **URL**: [ChatGPT Custom GPT Link](https://chatgpt.com/g/g-6a97eb82262c8191a722beb4ea82173d-jennifer-furniture-webmcp-co-pilot)
+* **OpenAPI Manifest**: [https://jennifer-webmcp.vercel.app/api/mcp/manifest](https://jennifer-webmcp.vercel.app/api/mcp/manifest)
 
 ---
 
-## 🛡️ Security & Privacy
-* **Zero Secret Leakage:** `SHOPIFY_ACCESS_TOKEN` is never sent to the browser or exposed to AI agents.
-* **Read-Only Scopes:** Safe catalog read permissions prevent unwanted modifications to production data.
-* **Direct Shopify Checkout:** Financial transactions and payment details are processed exclusively on Shopify's PCI-compliant checkout infrastructure via Cart Permalinks.
+## 💻 Tech Stack & Deployment
+* **Framework**: Next.js 15 (App Router, Serverless Routes)
+* **Hosting**: Vercel Edge Network
+* **Commerce Engine**: Shopify Plus GraphQL Admin & Storefront API
+* **Standards**: W3C WebMCP Specification (`document.modelContext`), OpenAPI 3.1.0, Web Speech API
+
+---
+
+## 📄 License
+This project is open-source under the [MIT License](LICENSE).
