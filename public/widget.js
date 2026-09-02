@@ -1,17 +1,18 @@
 /**
- * Jennifer Furniture WebMCP Next-Gen Luxury Voice Concierge & Header Search Integration
+ * Jennifer Furniture WebMCP Next-Gen Luxury Voice Concierge & Multimodal Room Vision
  * Features:
- * 1. Apple Intelligence / Siri Cosmic Voice Orb (Bottom Right)
- * 2. Embedded Voice Mic & Live AI Predictive Search inside the Shopify Search Bar
- * 3. Glassmorphic Bento Cards, Spatial Clearance Meter, and 1-Click Buy
- * 4. W3C document.modelContext & OpenAI OpenAPI compatibility
+ * 1. Apple Intelligence / Siri Cosmic Voice Orb
+ * 2. Embedded Voice Mic & Camera Photo Upload inside Search Bar
+ * 3. Multimodal Room Staging & Architectural Fit Analysis (under $2,500 budget)
+ * 4. Cushion & Comfort Spec Matrix + Coordinated 3-Piece Suite with 15% Discount
+ * 5. W3C document.modelContext & OpenAPI 3.1.0 Tool Standards
  */
 (function() {
-  if (window.__JENNIFER_VOICE_WEBMCP_V3__) return;
-  window.__JENNIFER_VOICE_WEBMCP_V3__ = true;
+  if (window.__JENNIFER_VOICE_WEBMCP_V4__) return;
+  window.__JENNIFER_VOICE_WEBMCP_V4__ = true;
 
   // Cleanup legacy instances
-  var oldNodes = document.querySelectorAll("#jmcp-widget-container, #jvoice-container, .jvoice-search-mic-btn");
+  var oldNodes = document.querySelectorAll("#jmcp-widget-container, #jvoice-container, .jvoice-search-mic-btn, .jvoice-search-cam-btn");
   oldNodes.forEach(function(n) { if (n.parentNode) n.parentNode.removeChild(n); });
 
   var API_BASE = "https://jennifer-webmcp.vercel.app";
@@ -25,7 +26,8 @@
     chatHistory: [],
     activeProducts: [],
     selectedProduct: null,
-    roomDimensions: { width: 12, length: 10 }
+    roomDimensions: { width: 14, length: 12 },
+    uploadedImage: null
   };
 
   // 1. Initialize W3C document.modelContext in browser
@@ -43,7 +45,7 @@
     };
   }
 
-  // Register the 4 Core WebMCP Tools
+  // Register the 5 Core WebMCP Tools
   var toolDefs = [
     {
       name: "find_products_by_constraints",
@@ -92,6 +94,18 @@
           body: JSON.stringify(args)
         }).then(function(r) { return r.json(); });
       }
+    },
+    {
+      name: "analyze_room_photo_and_recommend",
+      description: "Analyzes uploaded room photo, evaluates color palette, cushion comfort, and spatial clearance under budget.",
+      inputSchema: { type: "object", properties: { image_data: { type: "string" }, budget_cap: { type: "number" }, comfort_type: { type: "string" } } },
+      execute: function(args) {
+        return fetch(API_BASE + "/api/tools/room-designer", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(args)
+        }).then(function(r) { return r.json(); });
+      }
     }
   ];
 
@@ -114,9 +128,9 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* Embedded Search Bar Mic Button */
+    /* Embedded Search Bar Controls */
     .jvoice-search-mic-btn {
-      position: absolute; right: 48px; top: 50%; transform: translateY(-50%);
+      position: absolute; right: 46px; top: 50%; transform: translateY(-50%);
       z-index: 15; background: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(168, 85, 247, 0.2));
       border: 1px solid rgba(99, 102, 241, 0.4); border-radius: 50%;
       width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
@@ -129,6 +143,18 @@
     .jvoice-search-mic-btn.jvoice-search-listening {
       background: linear-gradient(135deg, #ef4444, #f97316); color: white;
       animation: jvoice-orb-pulse 1.2s infinite; border-color: #ef4444;
+    }
+
+    .jvoice-search-cam-btn {
+      position: absolute; right: 84px; top: 50%; transform: translateY(-50%);
+      z-index: 15; background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 50%;
+      width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+      color: #94a3b8; cursor: pointer; transition: all 0.25s ease; font-size: 14px;
+    }
+    .jvoice-search-cam-btn:hover {
+      background: rgba(99, 102, 241, 0.25); color: #ffffff; border-color: #6366f1;
+      transform: translateY(-50%) scale(1.12);
     }
 
     /* Floating Apple Intelligence Orb */
@@ -264,6 +290,12 @@
       padding: 3px 9px; border-radius: 6px; margin-bottom: 10px;
     }
 
+    /* Multimodal Upload Thumbnail */
+    .jvoice-uploaded-preview {
+      width: 100%; max-height: 160px; object-fit: cover; border-radius: 12px;
+      margin-bottom: 12px; border: 1px solid rgba(255,255,255,0.15);
+    }
+
     /* Bento Product Cards */
     .jvoice-products-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
     .jvoice-card {
@@ -321,10 +353,10 @@
       transform: translateY(-1px);
     }
 
-    /* Modern Bottom Input Bar */
+    /* Modern Bottom Input Bar with Camera & Mic */
     .jvoice-input-container {
       padding: 18px 24px; background: rgba(255, 255, 255, 0.02);
-      border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; gap: 10px; align-items: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; gap: 8px; align-items: center;
     }
     .jvoice-input-pill {
       flex: 1; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12);
@@ -344,6 +376,13 @@
       box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
     }
     .jvoice-mic-trigger:hover { transform: scale(1.05); }
+
+    .jvoice-cam-trigger {
+      background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 12px; width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
+      color: #cbd5e1; font-size: 18px; cursor: pointer; transition: all 0.2s ease;
+    }
+    .jvoice-cam-trigger:hover { background: rgba(99, 102, 241, 0.2); color: white; border-color: #6366f1; }
 
     /* Laser Spotlight Target Animation */
     .jvoice-spotlight-target {
@@ -384,7 +423,7 @@
     if (isVoiceMuted || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     var cleanText = text
-      .replace(/###|\*\*|__|```|•|🛒|⚡|🎁|⚖️|📐|🛋️|🎯|🛍️/g, "")
+      .replace(/###|\*\*|__|```|•|🛒|⚡|🎁|⚖️|📐|🛋️|🎯|🛍️|📸|🏛️/g, "")
       .replace(/\[([^\]]+)\]\([^\)]+\)/g, "$1")
       .replace(/https?:\/\/\S+/g, "")
       .trim();
@@ -438,23 +477,30 @@
     });
   }
 
-  // Multi-Turn Execution
-  function executeUserQuery(query) {
+  // Multi-Turn Execution with Image Support
+  function executeUserQuery(query, imageBase64) {
     var msgContainer = document.getElementById("jvoice-msg-container");
     var userMsg = document.createElement("div");
     userMsg.className = "jvoice-msg jvoice-msg-user";
-    userMsg.textContent = query;
-    msgContainer.appendChild(userMsg);
-    sessionContext.chatHistory.push({ role: "user", content: query });
 
-    showHUD("🧠 WebMCP Reasoning: " + query + "...", false);
+    if (imageBase64) {
+      userMsg.innerHTML = `<img src="${imageBase64}" class="jvoice-uploaded-preview" /><br/><span>${query || "Analyze this room and recommend a sofa under $2,500"}</span>`;
+    } else {
+      userMsg.textContent = query;
+    }
+
+    msgContainer.appendChild(userMsg);
+    sessionContext.chatHistory.push({ role: "user", content: query || "Analyze room photo" });
+
+    showHUD("🧠 WebMCP Room Vision & Aesthetic Analysis...", false);
     setWaveform(true);
 
     fetch(API_BASE + "/api/agent/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        message: query,
+        message: query || "Analyze this room photo and recommend the best fitting sofa under $2,500",
+        image: imageBase64 || null,
         history: sessionContext.chatHistory.slice(-6),
         context: sessionContext
       })
@@ -536,6 +582,20 @@
     });
   }
 
+  function handlePhotoFile(file) {
+    if (!file) return;
+    showHUD("📸 Processing room photo...", false);
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var base64 = e.target.result;
+      sessionContext.uploadedImage = base64;
+      var drawer = document.getElementById("jvoice-drawer");
+      if (drawer) drawer.classList.add("jvoice-open");
+      executeUserQuery("Analyze this room photo and recommend a sofa under $2,500 that matches my layout and cushion comfort", base64);
+    };
+    reader.readAsDataURL(file);
+  }
+
   function startVoiceListening(targetInputElement) {
     var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRec) {
@@ -589,8 +649,8 @@
     recognition.start();
   }
 
-  // Inject Voice Mic into all theme search bars
-  function injectSearchMics() {
+  // Inject Voice Mic & Camera Photo Buttons into all theme search bars
+  function injectSearchControls() {
     var searchInputs = document.querySelectorAll('input[type="search"], input[name="q"], .search__input, #Search-In-Modal, #Search-In-Template');
     searchInputs.forEach(function(input) {
       if (input.dataset.jvoiceInjected) return;
@@ -601,6 +661,29 @@
         var computedPos = window.getComputedStyle(parent).position;
         if (computedPos === "static") parent.style.position = "relative";
 
+        // 1. Camera Photo Upload Button
+        var camBtn = document.createElement("button");
+        camBtn.type = "button";
+        camBtn.className = "jvoice-search-cam-btn";
+        camBtn.title = "Upload Room Photo for AI Fit & Styling Recommendation";
+        camBtn.innerHTML = '📷';
+
+        var hiddenFileInput = document.createElement("input");
+        hiddenFileInput.type = "file";
+        hiddenFileInput.accept = "image/*";
+        hiddenFileInput.style.display = "none";
+        hiddenFileInput.addEventListener("change", function(e) {
+          if (e.target.files && e.target.files[0]) handlePhotoFile(e.target.files[0]);
+        });
+        parent.appendChild(hiddenFileInput);
+
+        camBtn.addEventListener("click", function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          hiddenFileInput.click();
+        });
+
+        // 2. Microphone Voice Button
         var micBtn = document.createElement("button");
         micBtn.type = "button";
         micBtn.className = "jvoice-search-mic-btn";
@@ -613,6 +696,7 @@
           startVoiceListening(input);
         });
 
+        parent.appendChild(camBtn);
         parent.appendChild(micBtn);
       }
 
@@ -621,7 +705,7 @@
         if (e.key === "Enter" && input.value.trim().length > 3) {
           var val = input.value.trim();
           var lower = val.toLowerCase();
-          if (lower.includes("fit") || lower.includes("dimension") || lower.includes("under") || lower.includes("bundle") || lower.includes("compare")) {
+          if (lower.includes("fit") || lower.includes("dimension") || lower.includes("under") || lower.includes("bundle") || lower.includes("compare") || lower.includes("room")) {
             e.preventDefault();
             e.stopPropagation();
             var drawer = document.getElementById("jvoice-drawer");
@@ -643,6 +727,17 @@
     var container = document.createElement("div");
     container.id = "jvoice-container";
     container.className = "jvoice-container";
+
+    // Hidden global file input for camera uploads
+    var globalFileInput = document.createElement("input");
+    globalFileInput.type = "file";
+    globalFileInput.id = "jvoice-global-file-input";
+    globalFileInput.accept = "image/*";
+    globalFileInput.style.display = "none";
+    globalFileInput.addEventListener("change", function(e) {
+      if (e.target.files && e.target.files[0]) handlePhotoFile(e.target.files[0]);
+    });
+    container.appendChild(globalFileInput);
 
     // Glowing Apple Intelligence Voice Orb
     var orb = document.createElement("div");
@@ -668,7 +763,7 @@
           <div class="jvoice-avatar">✨</div>
           <div class="jvoice-brand-text">
             <span class="jvoice-brand-title">Jennifer AI Concierge</span>
-            <span class="jvoice-brand-sub">W3C WebMCP Protocol</span>
+            <span class="jvoice-brand-sub">W3C WebMCP & Vision Engine</span>
           </div>
         </div>
         <div class="jvoice-controls">
@@ -690,21 +785,24 @@
 
       <div class="jvoice-messages" id="jvoice-msg-container">
         <div class="jvoice-msg jvoice-msg-assistant">
-          <div class="jvoice-tool-badge">✨ WebMCP Live Connected</div>
-          Welcome! I am your <strong>Voice Concierge</strong>. Tap the microphone 🎙️ in the search bar or speak below to drive the store live:
+          <div class="jvoice-tool-badge">📷 Multimodal Room Vision Connected</div>
+          Welcome! I am your <strong>Voice Concierge & Interior Designer</strong>. 
+          <br/><br/>
+          📷 <strong>Upload a photo of your living room/hall</strong> or tap 🎙️ to ask for the best fitting sofa under your budget!
           
           <div class="jvoice-chips-wrap" style="margin-top:14px;">
-            <button class="jvoice-chip" data-chip="Find in-stock sofas under $2,000">🛋️ In-Stock Sofas &lt; $2k</button>
+            <button class="jvoice-chip" data-chip="Analyze my room photo for a sofa under $2,500">📸 Room Photo Consultation</button>
+            <button class="jvoice-chip" data-chip="Find in-stock sleeper sofas under $2,000">🛋️ In-Stock Sofas &lt; $2k</button>
             <button class="jvoice-chip" data-chip="Will Monika sleeper fit my 12x10 living room?">📐 12x10 Room Fit Check</button>
             <button class="jvoice-chip" data-chip="Build a 3-piece living room bundle with 15% discount">🎁 3-Piece Suite (-15%)</button>
-            <button class="jvoice-chip" data-chip="Compare Kirby Chaise vs Mason Leather 89 sofa">⚖️ Deep Spec Comparison</button>
           </div>
         </div>
       </div>
 
       <div class="jvoice-input-container">
+        <button class="jvoice-cam-trigger" id="jvoice-cam-btn" title="Upload Room Photo">📷</button>
         <button class="jvoice-mic-trigger" id="jvoice-mic-btn" title="Tap to Speak">🎙️</button>
-        <input type="text" class="jvoice-input-pill" placeholder="Speak or type prompt..." id="jvoice-user-input" />
+        <input type="text" class="jvoice-input-pill" placeholder="Speak, type, or upload room..." id="jvoice-user-input" />
         <button class="jvoice-icon-btn" id="jvoice-send-btn" style="background:#6366f1; color:white; border:none; padding:11px 16px; border-radius:12px; font-weight:700;">Send</button>
       </div>
     `;
@@ -714,12 +812,17 @@
     var inputEl = document.getElementById("jvoice-user-input");
     var sendBtn = document.getElementById("jvoice-send-btn");
     var micBtn = document.getElementById("jvoice-mic-btn");
+    var camBtn = document.getElementById("jvoice-cam-btn");
     var closeBtn = document.getElementById("jvoice-close-btn");
     var muteBtn = document.getElementById("jvoice-mute-toggle");
 
     orb.addEventListener("click", function() {
       drawer.classList.add("jvoice-open");
       startVoiceListening();
+    });
+
+    camBtn.addEventListener("click", function() {
+      globalFileInput.click();
     });
 
     micBtn.addEventListener("click", function() {
@@ -754,7 +857,11 @@
       var chipBtn = target.closest(".jvoice-chip");
       if (chipBtn) {
         var chipText = chipBtn.dataset.chip || chipBtn.innerText;
-        executeUserQuery(chipText);
+        if (chipText.includes("Room Photo Consultation")) {
+          globalFileInput.click();
+        } else {
+          executeUserQuery(chipText);
+        }
         return;
       }
       if (target.dataset.action === "spotlight" || target.closest('[data-action="spotlight"]')) {
@@ -767,9 +874,9 @@
       }
     });
 
-    // Inject Search Bar Mics immediately & watch for dynamic modals
-    injectSearchMics();
-    setInterval(injectSearchMics, 1000);
+    // Inject Search Bar Controls immediately & watch for dynamic modals
+    injectSearchControls();
+    setInterval(injectSearchControls, 1000);
   }
 
   if (document.readyState === "loading") {

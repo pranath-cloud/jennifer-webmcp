@@ -8,6 +8,7 @@ import {
   CALCULATE_ROOM_FIT_SCHEMA,
   COMPARE_PRODUCTS_DEEP_SCHEMA,
   BUILD_ROOM_BUNDLE_SCHEMA,
+  ANALYZE_ROOM_PHOTO_SCHEMA,
   GET_STORE_REVENUE_SCHEMA,
   GET_INVENTORY_HEALTH_SCHEMA,
   ANALYZE_CUSTOMER_TRENDS_SCHEMA,
@@ -204,6 +205,38 @@ export async function GET(request: NextRequest) {
                           },
                         },
                       },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      "/api/tools/room-designer": {
+        post: {
+          operationId: "analyze_room_photo_and_recommend",
+          summary: "Multimodal AI Room Designer & Photo Staging Recommendation",
+          description:
+            "Analyzes an uploaded photo of a living room or hall, evaluates architectural structure, color palette, and cushion comfort needs, calculates spatial clearance, and recommends in-stock sofas under budget with 1-click cart permalinks.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: ANALYZE_ROOM_PHOTO_SCHEMA,
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Room analysis, matched in-stock sofa recommendations, and bundle summary returned",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      success: { type: "boolean" },
+                      data: { type: "object" },
                     },
                   },
                 },

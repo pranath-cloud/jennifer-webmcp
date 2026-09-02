@@ -182,6 +182,43 @@ export const BUILD_ROOM_BUNDLE_SCHEMA = {
   required: ["base_product_handle"],
 };
 
+// 4. Multimodal AI Room Designer & Photo Staging Schema
+export const ANALYZE_ROOM_PHOTO_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    image_data: {
+      type: "string",
+      description: "Base64 encoded image string or publicly accessible URL of the customer's room or living hall photo.",
+    },
+    budget_cap: {
+      type: "number",
+      description: "Maximum budget in USD for the sofa/furniture piece (e.g., 2500). Defaults to 2500.",
+      default: 2500,
+    },
+    material_preference: {
+      type: "string",
+      enum: ["any", "leather", "fabric", "velvet", "performance"],
+      description: "Desired upholstery material. If omitted or 'any', the AI will recommend the ideal material based on room lighting and flooring.",
+    },
+    comfort_type: {
+      type: "string",
+      description: "Desired comfort profile (e.g. 'deep-seating', 'plush-cushions', 'firm-lumbar', 'sofa-bed', 'pillows').",
+    },
+    has_sleeper_need: {
+      type: "boolean",
+      description: "Whether the customer requires a sleeper / sofa bed function for overnight guests.",
+    },
+    room_dimensions: {
+      type: "object",
+      properties: {
+        width_feet: { type: "number" },
+        length_feet: { type: "number" },
+      },
+      description: "Optional estimated room dimensions in feet (e.g. 12x10 or 15x12).",
+    },
+  },
+};
+
 // Admin & Staff Capabilities
 export const AUTHENTICATE_ADMIN_SCHEMA = {
   type: "object" as const,
