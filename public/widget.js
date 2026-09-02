@@ -1,18 +1,22 @@
 /**
- * Jennifer Furniture Voice-Driven WebMCP Concierge
- * Dual-Engine: Voice-to-Voice (Speech Recognition + Synthesis) + W3C WebMCP Protocol
+ * Jennifer Furniture WebMCP Next-Gen Luxury Voice Concierge
+ * Apple Intelligence / Linear-Grade Glassmorphism Aesthetic
  * Live on Shopify Plus (JF Staging) & Vercel
  */
 (function() {
-  if (window.__JENNIFER_VOICE_WEBMCP_INIT__) return;
-  window.__JENNIFER_VOICE_WEBMCP_INIT__ = true;
+  if (window.__JENNIFER_VOICE_WEBMCP_V2__) return;
+  window.__JENNIFER_VOICE_WEBMCP_V2__ = true;
+
+  // Remove any legacy widgets
+  var oldWidget = document.getElementById("jmcp-widget-container") || document.getElementById("jvoice-container");
+  if (oldWidget && oldWidget.parentNode) oldWidget.parentNode.removeChild(oldWidget);
 
   var API_BASE = "https://jennifer-webmcp.vercel.app";
   var isVoiceMuted = false;
   var isListening = false;
+  var isSpeaking = false;
   var recognition = null;
 
-  // Session context for multi-turn reasoning
   var sessionContext = {
     chatHistory: [],
     activeProducts: [],
@@ -97,99 +101,252 @@
     }
   });
 
-  // Styles
+  // Next-Gen Luxury Glassmorphism Styles
   var CSS = `
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+
+    .jvoice-container {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Floating Apple Intelligence Orb */
     .jvoice-orb {
-      position: fixed; bottom: 28px; right: 28px; z-index: 2147483640;
-      width: 64px; height: 64px; border-radius: 50%;
-      background: radial-gradient(circle at 30% 30%, #3b82f6, #1e1b4b);
-      box-shadow: 0 10px 30px rgba(37, 99, 235, 0.45), 0 0 20px rgba(59, 130, 246, 0.3);
-      border: 2px solid rgba(255, 255, 255, 0.35); cursor: pointer;
-      display: flex; align-items: center; justify-content: center;
-      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      position: fixed; bottom: 32px; right: 32px; z-index: 2147483640;
+      width: 68px; height: 68px; border-radius: 50%;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.9), rgba(168, 85, 247, 0.9), rgba(236, 72, 153, 0.9));
+      box-shadow: 0 12px 35px rgba(99, 102, 241, 0.45), 0 0 40px rgba(168, 85, 247, 0.35);
+      border: 2px solid rgba(255, 255, 255, 0.45);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+      backdrop-filter: blur(16px);
     }
-    .jvoice-orb:hover { transform: scale(1.08) translateY(-3px); box-shadow: 0 15px 35px rgba(37, 99, 235, 0.6); }
+    .jvoice-orb:hover {
+      transform: scale(1.1) translateY(-4px);
+      box-shadow: 0 20px 45px rgba(99, 102, 241, 0.65), 0 0 60px rgba(236, 72, 153, 0.5);
+    }
+    .jvoice-orb::before {
+      content: ''; position: absolute; inset: -4px; border-radius: 50%;
+      background: radial-gradient(circle at center, transparent 30%, rgba(168, 85, 247, 0.4) 70%, transparent 100%);
+      animation: jvoice-orb-glow 4s ease-in-out infinite alternate; pointer-events: none;
+    }
+    @keyframes jvoice-orb-glow {
+      0% { transform: scale(0.95); opacity: 0.5; }
+      100% { transform: scale(1.25); opacity: 1; }
+    }
     .jvoice-orb.jvoice-listening {
-      animation: jvoice-pulse-ring 1.4s infinite;
-      background: radial-gradient(circle at 30% 30%, #ef4444, #7f1d1d);
-      box-shadow: 0 0 35px rgba(239, 68, 68, 0.8);
-      border-color: #fca5a5;
+      background: linear-gradient(135deg, #ef4444, #f97316, #eab308);
+      animation: jvoice-orb-pulse 1.2s infinite;
+      box-shadow: 0 0 50px rgba(239, 68, 68, 0.75);
     }
-    @keyframes jvoice-pulse-ring {
+    @keyframes jvoice-orb-pulse {
       0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-      70% { transform: scale(1.12); box-shadow: 0 0 0 18px rgba(239, 68, 68, 0); }
+      70% { transform: scale(1.14); box-shadow: 0 0 0 22px rgba(239, 68, 68, 0); }
       100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
     }
-    .jvoice-orb-icon { font-size: 26px; color: white; user-select: none; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); }
+    .jvoice-orb-icon { font-size: 28px; color: #ffffff; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3)); z-index: 1; }
 
+    /* Top HUD Pill */
     .jvoice-hud {
-      position: fixed; top: 24px; left: 50%; transform: translateX(-50%) translateY(-100px);
-      z-index: 2147483645; background: rgba(15, 23, 42, 0.96); backdrop-filter: blur(16px);
-      color: #ffffff; border: 1px solid rgba(59, 130, 246, 0.5); border-radius: 9999px;
-      padding: 10px 24px; font-family: monospace; font-size: 13px; font-weight: 600;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6); display: flex; align-items: center; gap: 12px;
-      pointer-events: none; transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease; opacity: 0;
+      position: fixed; top: 28px; left: 50%; transform: translateX(-50%) translateY(-120px);
+      z-index: 2147483646; background: rgba(11, 15, 25, 0.92); backdrop-filter: blur(24px);
+      color: #f8fafc; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 9999px;
+      padding: 10px 22px; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7), 0 0 30px rgba(99, 102, 241, 0.25);
+      display: flex; align-items: center; gap: 12px; pointer-events: none;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1); opacity: 0;
     }
     .jvoice-hud.jvoice-hud-visible { transform: translateX(-50%) translateY(0); opacity: 1; }
-    .jvoice-hud-spinner {
-      width: 14px; height: 14px; border: 2px solid rgba(255, 255, 255, 0.3);
-      border-top-color: #38bdf8; border-radius: 50%; animation: jvoice-spin 0.8s linear infinite;
+    .jvoice-hud-dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #10b981;
+      box-shadow: 0 0 12px #10b981; animation: jvoice-dot-pulse 1.5s infinite;
     }
-    @keyframes jvoice-spin { to { transform: rotate(360deg); } }
+    @keyframes jvoice-dot-pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.85); }
+    }
 
+    /* Luxury Glassmorphic Slide-Out Drawer */
     .jvoice-drawer {
-      position: fixed; top: 0; right: -490px; width: 450px; max-width: 100vw; height: 100vh;
-      background: #ffffff; z-index: 2147483644; box-shadow: -15px 0 45px rgba(0,0,0,0.35);
-      display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      transition: right 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      position: fixed; top: 0; right: -520px; width: 480px; max-width: 100vw; height: 100vh;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.98) 0%, rgba(10, 14, 26, 0.99) 100%);
+      backdrop-filter: blur(30px); z-index: 2147483645;
+      box-shadow: -20px 0 60px rgba(0, 0, 0, 0.8), -1px 0 0 rgba(255, 255, 255, 0.1);
+      display: flex; flex-direction: column;
+      transition: right 0.45s cubic-bezier(0.16, 1, 0.3, 1);
     }
     .jvoice-drawer.jvoice-open { right: 0; }
+
     .jvoice-header {
-      background: #0f172a; color: #ffffff; padding: 18px 20px;
-      display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1);
+      padding: 22px 24px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.02);
     }
-    .jvoice-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-    .jvoice-badge { font-size: 10px; background: #2563eb; color: white; padding: 2px 7px; border-radius: 4px; font-family: monospace; }
-    .jvoice-header-actions { display: flex; align-items: center; gap: 12px; }
-    .jvoice-mute-btn { background: transparent; border: 1px solid rgba(255,255,255,0.25); color: #e2e8f0; font-size: 12px; border-radius: 6px; padding: 4px 8px; cursor: pointer; }
-    .jvoice-close { background: transparent; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; }
+    .jvoice-brand { display: flex; align-items: center; gap: 12px; }
+    .jvoice-avatar {
+      width: 36px; height: 36px; border-radius: 10px;
+      background: linear-gradient(135deg, #6366f1, #a855f7);
+      display: flex; align-items: center; justify-content: center; font-size: 18px;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    }
+    .jvoice-brand-text { display: flex; flex-direction: column; }
+    .jvoice-brand-title { font-size: 15px; font-weight: 700; color: #ffffff; letter-spacing: -0.02em; }
+    .jvoice-brand-sub { font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #94a3b8; }
+    
+    .jvoice-controls { display: flex; align-items: center; gap: 8px; }
+    .jvoice-icon-btn {
+      background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #e2e8f0; border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; gap: 6px;
+    }
+    .jvoice-icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
 
+    /* Live Waveform Banner */
+    .jvoice-wave-bar {
+      height: 24px; padding: 0 24px; display: flex; align-items: center; gap: 4px;
+      background: rgba(99, 102, 241, 0.08); border-bottom: 1px solid rgba(99, 102, 241, 0.15);
+    }
+    .jvoice-wave-line {
+      flex: 1; height: 3px; background: linear-gradient(90deg, #6366f1, #a855f7);
+      border-radius: 9999px; transition: height 0.2s ease;
+    }
+    .jvoice-wave-active .jvoice-wave-line {
+      animation: jvoice-wave-dance 1s infinite alternate ease-in-out;
+    }
+    @keyframes jvoice-wave-dance {
+      0% { height: 2px; } 50% { height: 12px; } 100% { height: 4px; }
+    }
+
+    /* Message Stream */
     .jvoice-messages {
-      flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; background: #f8fafc;
+      flex: 1; overflow-y: auto; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;
+      scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent;
     }
-    .jvoice-msg { max-width: 92%; padding: 12px 14px; border-radius: 12px; font-size: 13px; line-height: 1.5; }
-    .jvoice-msg-user { align-self: flex-end; background: #2563eb; color: #ffffff; }
-    .jvoice-msg-assistant { align-self: flex-start; background: #ffffff; color: #1e293b; border: 1px solid #e2e8f0; }
+    .jvoice-messages::-webkit-scrollbar { width: 5px; }
+    .jvoice-messages::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 9999px; }
 
-    .jvoice-tool-tag {
-      display: inline-flex; align-items: center; gap: 6px; background: #0f172a; color: #38bdf8;
-      font-family: monospace; font-size: 11px; padding: 4px 8px; border-radius: 6px; margin-bottom: 8px;
+    .jvoice-msg { max-width: 90%; font-size: 13.5px; line-height: 1.55; border-radius: 16px; padding: 14px 18px; }
+    .jvoice-msg-user {
+      align-self: flex-end; background: linear-gradient(135deg, #4f46e5, #6366f1);
+      color: #ffffff; font-weight: 500; border-bottom-right-radius: 4px;
+      box-shadow: 0 8px 25px rgba(79, 70, 229, 0.35);
+    }
+    .jvoice-msg-assistant {
+      align-self: flex-start; background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.09); color: #e2e8f0;
+      border-bottom-left-radius: 4px; backdrop-filter: blur(12px);
     }
 
-    .jvoice-products { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
-    .jvoice-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px; display: flex; gap: 12px; }
-    .jvoice-img { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; }
-    .jvoice-card-body { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
-    .jvoice-card-title { font-weight: 600; font-size: 12px; color: #0f172a; }
-    .jvoice-card-price { font-size: 14px; font-weight: 700; color: #2563eb; }
-    .jvoice-card-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .jvoice-tool-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25);
+      color: #38bdf8; font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 600;
+      padding: 3px 9px; border-radius: 6px; margin-bottom: 10px;
+    }
 
-    .jvoice-btn-spotlight { background: #2563eb; color: white; border: none; font-size: 11px; padding: 5px 9px; border-radius: 6px; cursor: pointer; }
-    .jvoice-btn-cart-native { background: #0f172a; color: white; border: none; font-size: 11px; padding: 5px 9px; border-radius: 6px; cursor: pointer; }
-    .jvoice-btn-buy { background: #f1f5f9; color: #334155; text-decoration: none; font-size: 11px; padding: 5px 8px; border-radius: 6px; display: inline-block; }
+    /* Bento Product Cards */
+    .jvoice-products-grid { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+    .jvoice-card {
+      background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px; padding: 12px; display: flex; gap: 14px; transition: all 0.25s ease;
+    }
+    .jvoice-card:hover {
+      background: rgba(255, 255, 255, 0.06); border-color: rgba(99, 102, 241, 0.4);
+      transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+    }
+    .jvoice-card-img {
+      width: 90px; height: 90px; object-fit: cover; border-radius: 10px;
+      background: #1e293b; border: 1px solid rgba(255,255,255,0.08);
+    }
+    .jvoice-card-info { flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+    .jvoice-card-title { font-weight: 600; font-size: 13px; color: #f8fafc; line-height: 1.35; }
+    .jvoice-card-price-row { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+    .jvoice-card-price { font-size: 15px; font-weight: 700; color: #38bdf8; }
+    .jvoice-card-stock {
+      font-size: 10px; font-weight: 700; color: #10b981;
+      background: rgba(16, 185, 129, 0.12); padding: 2px 6px; border-radius: 4px;
+    }
 
-    .jvoice-input-wrap { padding: 14px; background: #ffffff; border-top: 1px solid #e2e8f0; display: flex; gap: 8px; align-items: center; }
-    .jvoice-input { flex: 1; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: 13px; outline: none; }
-    .jvoice-mic-input-btn { background: #eff6ff; border: 1px solid #bfdbfe; color: #2563eb; border-radius: 8px; padding: 8px 12px; font-size: 16px; cursor: pointer; }
-    .jvoice-send { background: #2563eb; color: white; border: none; border-radius: 8px; padding: 10px 16px; font-weight: 600; cursor: pointer; }
+    .jvoice-card-actions { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .jvoice-btn-spot {
+      background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35);
+      color: #818cf8; font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .jvoice-btn-spot:hover { background: #4f46e5; color: #ffffff; }
 
+    .jvoice-btn-bag {
+      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #f1f5f9; font-size: 11px; font-weight: 600; padding: 5px 10px; border-radius: 6px; cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .jvoice-btn-bag:hover { background: rgba(255, 255, 255, 0.18); color: #ffffff; }
+
+    .jvoice-btn-checkout {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #ffffff; font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 6px; text-decoration: none;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3); transition: all 0.2s ease;
+    }
+    .jvoice-btn-checkout:hover { transform: scale(1.03); }
+
+    /* Spatial Fit Scorecard Visualizer */
+    .jvoice-fit-card {
+      background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 12px; padding: 14px; margin-top: 8px;
+    }
+    .jvoice-fit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .jvoice-fit-verdict { font-weight: 700; color: #10b981; font-size: 13px; }
+    .jvoice-fit-score {
+      font-size: 12px; font-weight: 800; font-family: 'JetBrains Mono', monospace;
+      background: #10b981; color: #064e3b; padding: 2px 8px; border-radius: 9999px;
+    }
+    .jvoice-fit-meter-wrap { height: 6px; background: rgba(255,255,255,0.08); border-radius: 9999px; overflow: hidden; margin: 8px 0; }
+    .jvoice-fit-meter-bar { height: 100%; background: linear-gradient(90deg, #10b981, #38bdf8); border-radius: 9999px; }
+
+    /* Suggestion Pills */
+    .jvoice-chips-wrap { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .jvoice-chip {
+      background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #cbd5e1; border-radius: 9999px; padding: 5px 12px; font-size: 11.5px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .jvoice-chip:hover {
+      background: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.45); color: #ffffff;
+      transform: translateY(-1px);
+    }
+
+    /* Modern Bottom Input Bar */
+    .jvoice-input-container {
+      padding: 18px 24px; background: rgba(255, 255, 255, 0.02);
+      border-top: 1px solid rgba(255, 255, 255, 0.08); display: flex; gap: 10px; align-items: center;
+    }
+    .jvoice-input-pill {
+      flex: 1; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 12px; padding: 11px 16px; font-size: 13.5px; color: #ffffff; outline: none;
+      transition: all 0.2s ease;
+    }
+    .jvoice-input-pill:focus {
+      background: rgba(255, 255, 255, 0.08); border-color: #6366f1;
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+    }
+    .jvoice-input-pill::placeholder { color: #64748b; }
+
+    .jvoice-mic-trigger {
+      background: linear-gradient(135deg, #6366f1, #a855f7); border: none; border-radius: 12px;
+      width: 42px; height: 42px; display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 18px; cursor: pointer; transition: all 0.2s ease;
+      box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+    }
+    .jvoice-mic-trigger:hover { transform: scale(1.05); }
+
+    /* Laser Spotlight Target Animation */
     .jvoice-spotlight-target {
-      position: relative; animation: jvoice-laser-pulse 4s ease-out forwards; border-radius: 12px; scroll-margin-top: 120px;
+      position: relative; animation: jvoice-laser-pulse 4.5s ease-out forwards;
+      border-radius: 14px; scroll-margin-top: 120px;
     }
     @keyframes jvoice-laser-pulse {
-      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.9), 0 0 35px rgba(59, 130, 246, 0.7); outline: 3px solid #3b82f6; }
-      30% { box-shadow: 0 0 0 18px rgba(59, 130, 246, 0.35); outline: 3px solid #60a5fa; }
-      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); outline: 2px solid transparent; }
+      0% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.95), 0 0 40px rgba(168, 85, 247, 0.85); outline: 3px solid #818cf8; }
+      35% { box-shadow: 0 0 0 20px rgba(99, 102, 241, 0.4), 0 0 60px rgba(236, 72, 153, 0.5); outline: 3px solid #c084fc; }
+      100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0); outline: 2px solid transparent; }
     }
   `;
 
@@ -198,14 +355,21 @@
     var hud = document.getElementById("jvoice-action-hud");
     if (!hud) return;
     hud.innerHTML = `
-      ${isDone ? '<span style="color:#4ade80;">✔</span>' : '<div class="jvoice-hud-spinner"></div>'}
+      <div class="jvoice-hud-dot" style="${isDone ? 'background:#10b981; box-shadow:0 0 12px #10b981;' : 'background:#38bdf8; box-shadow:0 0 12px #38bdf8;'}"></div>
       <span>${text}</span>
     `;
     hud.classList.add("jvoice-hud-visible");
     if (hudTimer) clearTimeout(hudTimer);
     if (isDone) {
-      hudTimer = setTimeout(function() { hud.classList.remove("jvoice-hud-visible"); }, 3500);
+      hudTimer = setTimeout(function() { hud.classList.remove("jvoice-hud-visible"); }, 3800);
     }
+  }
+
+  function setWaveform(active) {
+    var bar = document.getElementById("jvoice-wave-bar");
+    if (!bar) return;
+    if (active) bar.classList.add("jvoice-wave-active");
+    else bar.classList.remove("jvoice-wave-active");
   }
 
   // Text to Speech
@@ -221,11 +385,14 @@
     var utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.rate = 1.05;
     utterance.pitch = 1.0;
+    utterance.onstart = function() { isSpeaking = true; setWaveform(true); };
+    utterance.onend = function() { isSpeaking = false; setWaveform(false); };
+    utterance.onerror = function() { isSpeaking = false; setWaveform(false); };
     window.speechSynthesis.speak(utterance);
   }
 
   function runVisualAutopilot(handle, title) {
-    showHUD("🎯 Voice Agent spotlighting " + title + "...", false);
+    showHUD("🎯 Spotlighting " + title + "...", false);
     var selector = 'a[href*="/products/' + handle + '"], [data-product-handle="' + handle + '"]';
     var targetLink = document.querySelector(selector);
     if (targetLink) {
@@ -233,16 +400,16 @@
       card.scrollIntoView({ behavior: "smooth", block: "center" });
       card.classList.add("jvoice-spotlight-target");
       showHUD("✨ Spotlighted " + title + "!", true);
-      setTimeout(function() { card.classList.remove("jvoice-spotlight-target"); }, 4000);
+      setTimeout(function() { card.classList.remove("jvoice-spotlight-target"); }, 4500);
     } else {
-      showHUD("🚀 Opening product: " + title + "...", false);
+      showHUD("🚀 Navigating to: " + title + "...", false);
       setTimeout(function() { window.location.href = "/products/" + handle; }, 800);
     }
   }
 
   function triggerNativeShopifyCart(variantId, title) {
     var numericId = String(variantId).includes("/") ? variantId.split("/").pop() : variantId;
-    showHUD("🛒 WebMCP Adding " + title + " to Bag...", false);
+    showHUD("🛒 Adding " + title + " to Bag...", false);
     fetch("/cart/add.js", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -273,7 +440,8 @@
     msgContainer.appendChild(userMsg);
     sessionContext.chatHistory.push({ role: "user", content: query });
 
-    showHUD("🧠 WebMCP reasoning: " + query + "...", false);
+    showHUD("🧠 WebMCP Reasoning: " + query + "...", false);
+    setWaveform(true);
 
     fetch(API_BASE + "/api/agent/chat", {
       method: "POST",
@@ -286,7 +454,8 @@
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      showHUD("✔ WebMCP completed!", true);
+      showHUD("✔ WebMCP Agent Ready!", true);
+      setWaveform(false);
 
       if (data.contextUpdate) {
         if (data.contextUpdate.selectedProduct) sessionContext.selectedProduct = data.contextUpdate.selectedProduct;
@@ -296,27 +465,35 @@
       var botMsg = document.createElement("div");
       botMsg.className = "jvoice-msg jvoice-msg-assistant";
 
-      var textFormatted = (data.text || "").replace(/\n/g, "<br/>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      var textFormatted = (data.text || "")
+        .replace(/\n/g, "<br/>")
+        .replace(/\*\*(.*?)\*\*/g, "<strong style='color:#ffffff;'>$1</strong>");
       var html = `<div>${textFormatted}</div>`;
 
+      // Product Cards
       if (data.products && data.products.length > 0) {
         sessionContext.activeProducts = data.products;
         if (!sessionContext.selectedProduct) sessionContext.selectedProduct = data.products[0];
 
-        html += `<div class="jvoice-products">`;
+        html += `<div class="jvoice-products-grid">`;
         data.products.forEach(function(p) {
           var numericVar = String(p.variantId || p.id).split("/").pop();
           var priceFormatted = (p.price != null ? Number(p.price) : 0).toFixed(2);
           html += `
             <div class="jvoice-card">
-              <img src="${p.image || 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80'}" class="jvoice-img" />
-              <div class="jvoice-card-body">
-                <div class="jvoice-card-title">${p.title}</div>
-                <div class="jvoice-card-price">$${priceFormatted}</div>
+              <img src="${p.image || 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80'}" class="jvoice-card-img" />
+              <div class="jvoice-card-info">
+                <div>
+                  <div class="jvoice-card-title">${p.title}</div>
+                  <div class="jvoice-card-price-row">
+                    <span class="jvoice-card-price">$${priceFormatted}</span>
+                    <span class="jvoice-card-stock">● In Stock</span>
+                  </div>
+                </div>
                 <div class="jvoice-card-actions">
-                  <button class="jvoice-btn-spotlight" data-action="spotlight" data-handle="${p.handle}" data-title="${p.title.replace(/"/g, '&quot;')}" data-id="${numericVar}">🎯 Spotlight</button>
-                  <button class="jvoice-btn-cart-native" data-action="add-cart" data-variant="${numericVar}" data-title="${p.title.replace(/"/g, '&quot;')}">🛍️ Add to Bag</button>
-                  <a href="${p.checkoutUrl || '#'}" class="jvoice-btn-buy" target="_top">⚡ 1-Click Buy</a>
+                  <button class="jvoice-btn-spot" data-action="spotlight" data-handle="${p.handle}" data-title="${p.title.replace(/"/g, '&quot;')}" data-id="${numericVar}">🎯 Spotlight</button>
+                  <button class="jvoice-btn-bag" data-action="add-cart" data-variant="${numericVar}" data-title="${p.title.replace(/"/g, '&quot;')}">🛍️ Add to Bag</button>
+                  <a href="${p.checkoutUrl || '#'}" class="jvoice-btn-checkout" target="_top">⚡ 1-Click Buy</a>
                 </div>
               </div>
             </div>
@@ -325,10 +502,11 @@
         html += `</div>`;
       }
 
+      // Smart Suggestion Chips
       if (data.chips && data.chips.length > 0) {
-        html += `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;">`;
+        html += `<div class="jvoice-chips-wrap">`;
         data.chips.forEach(function(c) {
-          html += `<button class="jvoice-chip-btn" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:9999px; padding:4px 10px; font-size:11px; font-weight:600; cursor:pointer;" data-chip="${c.replace(/"/g, '&quot;')}">${c}</button>`;
+          html += `<button class="jvoice-chip" data-chip="${c.replace(/"/g, '&quot;')}">${c}</button>`;
         });
         html += `</div>`;
       }
@@ -343,6 +521,7 @@
     })
     .catch(function(err) {
       showHUD("Error: " + err.message, true);
+      setWaveform(false);
       var errBubble = document.createElement("div");
       errBubble.className = "jvoice-msg jvoice-msg-assistant";
       errBubble.textContent = "Error executing WebMCP agent: " + err.message;
@@ -372,7 +551,7 @@
       var orb = document.getElementById("jvoice-orb-btn");
       var micBtn = document.getElementById("jvoice-mic-btn");
       if (orb) orb.classList.add("jvoice-listening");
-      if (micBtn) micBtn.innerText = "🛑";
+      if (micBtn) micBtn.innerHTML = '🛑';
       showHUD("🎙️ Listening... Speak naturally now", false);
     };
 
@@ -393,7 +572,7 @@
       var orb = document.getElementById("jvoice-orb-btn");
       var micBtn = document.getElementById("jvoice-mic-btn");
       if (orb) orb.classList.remove("jvoice-listening");
-      if (micBtn) micBtn.innerText = "🎙️";
+      if (micBtn) micBtn.innerHTML = '🎙️';
     };
 
     recognition.start();
@@ -408,52 +587,70 @@
 
     var container = document.createElement("div");
     container.id = "jvoice-container";
+    container.className = "jvoice-container";
 
-    // Glowing Voice Orb
+    // Glowing Apple Intelligence Voice Orb
     var orb = document.createElement("div");
     orb.id = "jvoice-orb-btn";
     orb.className = "jvoice-orb";
-    orb.innerHTML = '<div class="jvoice-orb-icon">🎙️</div>';
+    orb.title = "Tap to speak with Jennifer Furniture WebMCP AI";
+    orb.innerHTML = '<div class="jvoice-orb-icon">✨</div>';
     container.appendChild(orb);
 
-    // Action HUD
-    var hud = document.getElementById("jvoice-action-hud");
-    if (!hud) {
-      hud = document.createElement("div");
-      hud.id = "jvoice-action-hud";
-      hud.className = "jvoice-hud";
-      container.appendChild(hud);
-    }
+    // Top HUD Action Bar
+    var hud = document.createElement("div");
+    hud.id = "jvoice-action-hud";
+    hud.className = "jvoice-hud";
+    container.appendChild(hud);
 
-    // Slide-out Drawer
+    // Luxury Glassmorphic Slide-out Drawer
     var drawer = document.createElement("div");
     drawer.id = "jvoice-drawer";
     drawer.className = "jvoice-drawer";
     drawer.innerHTML = `
       <div class="jvoice-header">
-        <div class="jvoice-title">
-          <span>🎙️ Voice Concierge</span>
-          <span class="jvoice-badge">WebMCP Protocol</span>
+        <div class="jvoice-brand">
+          <div class="jvoice-avatar">✨</div>
+          <div class="jvoice-brand-text">
+            <span class="jvoice-brand-title">Jennifer AI Concierge</span>
+            <span class="jvoice-brand-sub">W3C WebMCP Protocol</span>
+          </div>
         </div>
-        <div class="jvoice-header-actions">
-          <button class="jvoice-mute-btn" id="jvoice-mute-toggle">🔊 Voice: ON</button>
-          <button class="jvoice-close" id="jvoice-close-btn">&times;</button>
+        <div class="jvoice-controls">
+          <button class="jvoice-icon-btn" id="jvoice-mute-toggle">🔊 Voice: ON</button>
+          <button class="jvoice-icon-btn" id="jvoice-close-btn" style="padding:6px 9px;">✕</button>
         </div>
       </div>
+      
+      <!-- Waveform Audio Visualizer -->
+      <div class="jvoice-wave-bar" id="jvoice-wave-bar">
+        <div class="jvoice-wave-line"></div>
+        <div class="jvoice-wave-line"></div>
+        <div class="jvoice-wave-line"></div>
+        <div class="jvoice-wave-line"></div>
+        <div class="jvoice-wave-line"></div>
+        <div class="jvoice-wave-line"></div>
+        <div class="jvoice-wave-line"></div>
+      </div>
+
       <div class="jvoice-messages" id="jvoice-msg-container">
         <div class="jvoice-msg jvoice-msg-assistant">
-          Welcome to the <strong>Jennifer Furniture Voice Concierge</strong>. Tap the microphone 🎙️ and speak naturally:
-          <div style="margin-top:10px; font-size:12px; color:#475569;">
-            • <em>"Find me a sleeper sectional under $2,000"</em><br/>
-            • <em>"Will this Monika sofa fit a 12 by 10 room?"</em><br/>
-            • <em>"Build a 3-piece living room bundle with 15% discount"</em>
+          <div class="jvoice-tool-badge">✨ WebMCP Live Connected</div>
+          Welcome! I am your <strong>Voice Concierge</strong>. Tap the microphone 🎙️ or choose an action below to drive the store live:
+          
+          <div class="jvoice-chips-wrap" style="margin-top:14px;">
+            <button class="jvoice-chip" data-chip="Find in-stock sofas under $2,000">🛋️ In-Stock Sofas &lt; $2k</button>
+            <button class="jvoice-chip" data-chip="Will Monika sleeper fit my 12x10 living room?">📐 12x10 Room Fit Check</button>
+            <button class="jvoice-chip" data-chip="Build a 3-piece living room bundle with 15% discount">🎁 3-Piece Suite (-15%)</button>
+            <button class="jvoice-chip" data-chip="Compare Kirby Chaise vs Mason Leather 89 sofa">⚖️ Deep Spec Comparison</button>
           </div>
         </div>
       </div>
-      <div class="jvoice-input-wrap">
-        <button class="jvoice-mic-input-btn" id="jvoice-mic-btn" title="Click to speak">🎙️</button>
-        <input type="text" class="jvoice-input" placeholder="Speak or type prompt..." id="jvoice-user-input" />
-        <button class="jvoice-send" id="jvoice-send-btn">Send</button>
+
+      <div class="jvoice-input-container">
+        <button class="jvoice-mic-trigger" id="jvoice-mic-btn" title="Tap to Speak">🎙️</button>
+        <input type="text" class="jvoice-input-pill" placeholder="Speak or type prompt..." id="jvoice-user-input" />
+        <button class="jvoice-icon-btn" id="jvoice-send-btn" style="background:#6366f1; color:white; border:none; padding:11px 16px; border-radius:12px; font-weight:700;">Send</button>
       </div>
     `;
     container.appendChild(drawer);
@@ -497,7 +694,7 @@
 
     container.addEventListener("click", function(e) {
       var target = e.target;
-      var chipBtn = target.closest(".jvoice-chip-btn");
+      var chipBtn = target.closest(".jvoice-chip");
       if (chipBtn) {
         var chipText = chipBtn.dataset.chip || chipBtn.innerText;
         executeUserQuery(chipText);
