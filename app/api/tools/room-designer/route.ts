@@ -229,6 +229,10 @@ export async function POST(request: NextRequest) {
       { variantId: coordinatedAccents[1].variantId, quantity: 1 },
     ];
 
+    const totalRetail = rawPrimaryPrice + coordinatedAccents[0].price + coordinatedAccents[1].price;
+    const bundleDiscountAmount = totalRetail * 0.15;
+    const bundledPrice = totalRetail - bundleDiscountAmount;
+
     const bundleCheckoutResult = generateCartPermalink(bundleItems, "WEBMCP15");
     const primaryCheckoutResult = generateCartPermalink([{ variantId: primaryVariantId, quantity: 1 }], "WEBMCP10");
 
