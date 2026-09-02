@@ -286,6 +286,14 @@
     });
   }
 
+  // Multi-Turn Conversational Session Context
+  var sessionContext = {
+    chatHistory: [],
+    activeProducts: [],
+    selectedProduct: null,
+    roomDimensions: { width: 12, length: 10 }
+  };
+
   // Universal WebMCP Tool Invoker
   function executeWebMCPTool(toolName, args, label) {
     var msgContainer = document.getElementById("jmcp-msg-container");
@@ -294,6 +302,7 @@
     userMsg.textContent = label;
     msgContainer.appendChild(userMsg);
 
+    sessionContext.chatHistory.push({ role: "user", content: label });
     showHUD("⚡ Executing WebMCP Tool: " + toolName + "...", false);
 
     // Call tool directly via RegisteredTool.execute or direct definition
@@ -326,6 +335,9 @@
 
         if (toolName === "find_products_by_constraints") {
           var products = result.products || [];
+          sessionContext.activeProducts = products;
+          if (products.length > 0) sessionContext.selectedProduct = products[0];
+
           contentHtml = `<div>Found <strong>${products.length} verified in-stock items</strong>:</div>`;
           if (products.length > 0) {
             contentHtml += `<div class="jmcp-products">`;
@@ -340,7 +352,7 @@
                     <div class="jmcp-card-title">${p.title}</div>
                     <div class="jmcp-card-price">$${priceFormatted}</div>
                     <div class="jmcp-card-actions">
-                      <button class="jmcp-btn-spotlight" data-action="spotlight" data-handle="${p.handle}" data-title="${p.title.replace(/"/g, '&quot;')}">🎯 Spotlight</button>
+                      <button class="jmcp-btn-spotlight" data-action="spotlight" data-handle="${p.handle}" data-title="${p.title.replace(/"/g, '&quot;')}" data-id="${numericVar}">🎯 Spotlight</button>
                       <button class="jmcp-btn-cart-native" data-action="add-cart" data-variant="${numericVar}" data-title="${p.title.replace(/"/g, '&quot;')}">🛍️ Add to Bag</button>
                       <a href="${permalink}" class="jmcp-btn-buy" target="_top">⚡ 1-Click Buy</a>
                     </div>
@@ -389,6 +401,7 @@
 
         botMsg.innerHTML = toolTagHtml + contentHtml;
         msgContainer.appendChild(botMsg);
+        sessionContext.chatHistory.push({ role: "assistant", content: botMsg.innerText });
         msgContainer.scrollTop = msgContainer.scrollHeight;
       })
       .catch(function(err) {
@@ -400,28 +413,106 @@
       });
   }
 
-  function handleNaturalLanguageInput(query) {
-    const lower = query.toLowerCase();
-    if (lower.includes("fit") || lower.includes("dimension") || lower.includes("room") || /\d+\s*x\s*\d+/.test(lower)) {
-      let roomW = 12, roomL = 10;
-      const dim = lower.match(/(\d+)\s*(?:x|by|\*)\s*(\d+)/);
-      if (dim) { roomW = parseInt(dim[1]); roomL = parseInt(dim[2]); }
-      executeWebMCPTool("calculate_room_fit_and_clearance", { room_width_feet: roomW, room_length_feet: roomL, product_handle: "monika-sleeper-sofa" }, query);
-    } else if (lower.includes("bundle") || lower.includes("set") || lower.includes("suite")) {
-      executeWebMCPTool("build_coordinated_room_bundle", { base_product_handle: "monika-sleeper-sofa", budget_cap: 3500 }, query);
-    } else if (lower.includes("compare") || lower.includes("vs")) {
-      executeWebMCPTool("compare_products_deep_matrix", { product_handles: ["kirby-chaise", "mason-leather-89-sofa-1"] }, query);
-    } else {
-      let maxP = undefined;
-      const pMatch = lower.match(/(?:under|below|\$)\s*(\d+)/);
-      if (pMatch) maxP = parseInt(pMatch[1]);
-      let cat = "sofa";
-      if (lower.includes("sectional")) cat = "sectional";
-      else if (lower.includes("dining")) cat = "dining";
-      else if (lower.includes("bed")) cat = "bed";
-      else if (lower.includes("chair")) cat = "chair";
-      executeWebMCPTool("find_products_by_constraints", { category: cat, max_price: maxP, in_stock_only: true }, query);
+  // Dual-Engine Natural Language Handler (Gemini Nano on-device + Cloud Agent Fallback)
+  async function handleNaturalLanguageInput(query) {
+    var msgContainer = document.getElementById("jmcp-msg-container");
+    var userMsg = document.createElement("div");
+    userMsg.className = "jmcp-msg jmcp-msg-user";
+    userMsg.textContent = query;
+    msgContainer.appendChild(userMsg);
+    sessionContext.chatHistory.push({ role: "user", content: query });
+
+    showHUD("🧠 AI Co-Pilot reasoning...", false);
+
+    // 1. Check for on-device Gemini Nano (W3C Prompt API)
+    if (window.ai && window.ai.languageModel) {
+      try {
+        var capabilities = await window.ai.languageModel.capabilities();
+        if (capabilities.available !== "no") {
+          showHUD("⚡ Powered by On-Device Gemini Nano...", false);
+          var nanoSession = await window.ai.languageModel.create({
+            systemPrompt: "You are the Jennifer Furniture WebMCP AI Co-Pilot. You have access to registered tools in document.modelContext: find_products_by_constraints, calculate_room_fit_and_clearance, compare_products_deep_matrix, build_coordinated_room_bundle."
+          });
+          var nanoResponse = await nanoSession.prompt(query);
+          console.log("[WebMCP Gemini Nano]", nanoResponse);
+        }
+      } catch (e) {
+        console.warn("[WebMCP] Gemini Nano fallback to Cloud Agent:", e);
+      }
     }
+
+    // 2. Full Multi-Turn Cloud Agent Execution
+    fetch(API_BASE + "/api/agent/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: query,
+        history: sessionContext.chatHistory.slice(-6),
+        context: sessionContext
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      showHUD("✔ Agent completed response!", true);
+
+      if (data.contextUpdate) {
+        if (data.contextUpdate.selectedProduct) sessionContext.selectedProduct = data.contextUpdate.selectedProduct;
+        if (data.contextUpdate.roomDimensions) sessionContext.roomDimensions = data.contextUpdate.roomDimensions;
+      }
+
+      var botMsg = document.createElement("div");
+      botMsg.className = "jmcp-msg jmcp-msg-assistant";
+
+      var textFormatted = (data.text || "").replace(/\n/g, "<br/>").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+      var html = `<div>${textFormatted}</div>`;
+
+      if (data.products && data.products.length > 0) {
+        sessionContext.activeProducts = data.products;
+        if (!sessionContext.selectedProduct) sessionContext.selectedProduct = data.products[0];
+
+        html += `<div class="jmcp-products">`;
+        data.products.forEach(function(p) {
+          var numericVar = String(p.variantId || p.id).split("/").pop();
+          var priceFormatted = (p.price != null ? Number(p.price) : 0).toFixed(2);
+          html += `
+            <div class="jmcp-card">
+              <img src="${p.image || 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80'}" class="jmcp-img" />
+              <div class="jmcp-card-body">
+                <div class="jmcp-card-title">${p.title}</div>
+                <div class="jmcp-card-price">$${priceFormatted}</div>
+                <div class="jmcp-card-actions">
+                  <button class="jmcp-btn-spotlight" data-action="spotlight" data-handle="${p.handle}" data-title="${p.title.replace(/"/g, '&quot;')}" data-id="${numericVar}">🎯 Spotlight</button>
+                  <button class="jmcp-btn-cart-native" data-action="add-cart" data-variant="${numericVar}" data-title="${p.title.replace(/"/g, '&quot;')}">🛍️ Add to Bag</button>
+                  <a href="${p.checkoutUrl || '#'}" class="jmcp-btn-buy" target="_top">⚡ 1-Click Buy</a>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        html += `</div>`;
+      }
+
+      // Smart Suggestion Chips
+      if (data.chips && data.chips.length > 0) {
+        html += `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;">`;
+        data.chips.forEach(function(c) {
+          html += `<button class="jmcp-chip-btn" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:9999px; padding:4px 10px; font-size:11px; font-weight:600; cursor:pointer;" data-chip="${c.replace(/"/g, '&quot;')}">${c}</button>`;
+        });
+        html += `</div>`;
+      }
+
+      botMsg.innerHTML = html;
+      msgContainer.appendChild(botMsg);
+      sessionContext.chatHistory.push({ role: "assistant", content: data.text });
+      msgContainer.scrollTop = msgContainer.scrollHeight;
+    })
+    .catch(function(err) {
+      showHUD("Error: " + err.message, true);
+      var errBubble = document.createElement("div");
+      errBubble.className = "jmcp-msg jmcp-msg-assistant";
+      errBubble.textContent = "Error communicating with AI Co-Pilot: " + err.message;
+      msgContainer.appendChild(errBubble);
+    });
   }
 
   function init() {
@@ -525,6 +616,12 @@
         var toolArgs = JSON.parse(toolBtn.dataset.args || "{}");
         var toolLabel = toolBtn.dataset.label;
         executeWebMCPTool(toolName, toolArgs, toolLabel);
+        return;
+      }
+      var chipBtn = target.closest(".jmcp-chip-btn");
+      if (chipBtn) {
+        var chipText = chipBtn.dataset.chip || chipBtn.innerText;
+        handleNaturalLanguageInput(chipText);
         return;
       }
       if (target.dataset.action === "spotlight" || target.closest('[data-action="spotlight"]')) {

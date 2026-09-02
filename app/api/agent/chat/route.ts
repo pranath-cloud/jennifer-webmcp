@@ -44,9 +44,13 @@ function generateSmartChips(category?: string, maxPrice?: number, count = 0): st
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { message = "", customer } = body;
+    const { message = "", customer, history = [], context = {} } = body;
     const cleanMsg = message.trim();
     const lower = cleanMsg.toLowerCase();
+
+    // Context resolution from session memory
+    const activeProduct = context.selectedProduct || (context.lastProducts && context.lastProducts[0]) || null;
+    const activeCategory = context.activeCategory || "";
 
     // ==========================================
     // 1. GREETING INTENT
@@ -55,7 +59,7 @@ export async function POST(request: NextRequest) {
       const greetingName = customer?.name ? `, ${customer.name}` : "";
       return NextResponse.json({
         success: true,
-        text: `Hello${greetingName}! 👋 I am your Jennifer Furniture AI Co-Pilot. Tell me what you're looking for—like *"In-stock leather sofa under $3,000"*, *"Will Monika fit a 12x10 room?"*, or *"Build a 3-piece room bundle"*—and I'll drive the store and calculate specs for you!`,
+        text: `Hello${greetingName}! 👋 I am your Jennifer Furniture AI Co-Pilot with full WebMCP & Gemini on-device tools. Tell me what you're looking for—like *"In-stock leather sofa under $3,000"*, *"Will this fit my 12x10 room?"*, or *"Build a 3-piece suite"*—and I will calculate dimensions and drive the store for you!`,
         products: [],
         chips: [
           "🛋️ In-Stock Sofas under $2,000",
@@ -72,65 +76,74 @@ export async function POST(request: NextRequest) {
     // ==========================================
     if (lower.includes("fit") || lower.includes("dimension") || lower.includes("clearance") || lower.includes("room size") || /\b\d+\s*x\s*\d+\b/i.test(lower)) {
       // Extract room dimensions (e.g. 12x10 or 12 by 10)
-      let roomW = 12;
-      let roomL = 10;
+      let roomW = context.roomDimensions?.width || 12;
+      let roomL = context.roomDimensions?.length || 10;
       const dimMatch = lower.match(/(\d+)\s*(?:x|by|\*)\s*(\d+)/i);
       if (dimMatch) {
         roomW = parseInt(dimMatch[1]);
         roomL = parseInt(dimMatch[2]);
       }
 
-      // Default product handle or detect mentioned handle
-      let targetHandle = "monika-sleeper-sofa";
-      if (lower.includes("mason")) targetHandle = "mason-leather-89-sofa-1";
-      else if (lower.includes("kirby")) targetHandle = "kirby-chaise";
-      else if (lower.includes("cici")) targetHandle = "cici-sofa";
-      else if (lower.includes("horizon")) targetHandle = "horizon-sofa";
+      // Dynamically resolve target product from context or prompt
+      let targetTitle = activeProduct?.title || "Monika Sleeper Sofa";
+      let targetHandle = activeProduct?.handle || "monika-sleeper-sofa";
+      let targetPrice = activeProduct?.price || 1899.00;
+      let targetVariantId = activeProduct?.variantId || "48745536979112";
+
+      if (lower.includes("mason")) { targetHandle = "mason-leather-89-sofa-1"; targetTitle = "Mason Leather 89\" Sofa"; targetPrice = 2499.00; }
+      else if (lower.includes("kirby")) { targetHandle = "kirby-chaise"; targetTitle = "Kirby Chaise Sectional"; targetPrice = 1799.00; }
+      else if (lower.includes("softee")) { targetHandle = "softee-full-sofa-sleeper"; targetTitle = "Softee Full Sofa Sleeper"; targetPrice = 699.99; }
+      else if (lower.includes("linda")) { targetHandle = "linda-slipcover-sofa-chair"; targetTitle = "Linda Slipcover Sofa Chair"; targetPrice = 1399.99; }
+      else if (lower.includes("hodan")) { targetHandle = "hodan-sofa-chaise"; targetTitle = "Hodan Sofa Chaise"; targetPrice = 742.99; }
 
       const roomWidthInches = roomW * 12;
       const roomLengthInches = roomL * 12;
-      const sofaWidthInches = targetHandle.includes("mason") ? 89 : 84;
+      const sofaWidthInches = targetHandle.includes("mason") ? 89 : (targetHandle.includes("chaise") ? 92 : 84);
       const sofaDepthInches = 38;
 
       const remainingSide = Math.max(0, Math.round((roomWidthInches - sofaWidthInches) / 2));
       const frontClearance = Math.max(0, Math.round(roomLengthInches - (sofaDepthInches + 24 + 16)));
 
       const permalink = generateCartPermalink(
-        [{ variantId: "48745536979112", quantity: 1, title: "Verified Fit Furniture Item", price: 1899.00 }],
+        [{ variantId: targetVariantId, quantity: 1, title: targetTitle, price: targetPrice }],
         "WEBMCP10"
       );
 
-      const fitScore = frontClearance >= 30 ? 96 : 75;
+      const fitScore = frontClearance >= 30 ? (frontClearance >= 48 ? 98 : 88) : 70;
       const verdict = frontClearance >= 30 ? "✅ EXCELLENT LUXURY FIT" : "⚠️ COMPACT FIT";
 
       return NextResponse.json({
         success: true,
-        text: `### 📐 Room Fit & Walking Clearance Analysis\n\n` +
+        text: `### 📐 Room Fit Analysis for **${targetTitle}**\n\n` +
               `• **Your Room:** ${roomW} ft x ${roomL} ft (${roomWidthInches}" x ${roomLengthInches}")\n` +
-              `• **Sofa Dimensions:** ${sofaWidthInches}" Width x ${sofaDepthInches}" Depth\n` +
-              `• **Perimeter Clearance:** **${remainingSide} inches** on left & right walls\n` +
-              `• **Front Walkway Path:** **${frontClearance} inches** remaining (Standard requirement is 30")\n` +
-              `• **Verdict:** **${verdict}** (Score: **${fitScore}/100**)\n\n` +
-              `You have ample space for comfortable walking paths and side tables!`,
+              `• **Product Specs:** ${sofaWidthInches}" Width x ${sofaDepthInches}" Depth\n` +
+              `• **Perimeter Clearance:** **${remainingSide} inches** on left & right margins\n` +
+              `• **Front Walkway Path:** **${frontClearance} inches** remaining (Standard minimum: 30")\n` +
+              `• **Verdict:** **${verdict}** (Fit Score: **${fitScore}/100**)\n\n` +
+              `Adequate walking clearance is confirmed. Would you like to spotlight this on the page or check matching pieces?`,
         products: [
           {
-            id: "fit-product",
-            title: targetHandle.replace(/-/g, " ").toUpperCase(),
+            id: activeProduct?.id || "fit-product",
+            title: targetTitle,
             handle: targetHandle,
-            price: 1899.00,
-            image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
+            price: targetPrice,
+            image: activeProduct?.image || "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
             inStock: true,
             url: `https://jenniferfurniturestaging.myshopify.com/products/${targetHandle}`,
             checkoutUrl: permalink.checkoutUrl,
-            variantId: "48745536979112"
+            variantId: targetVariantId
           }
         ],
         chips: [
-          "🛒 Proceed to Checkout",
-          "🎁 Add Matching Ottoman",
-          "⚖️ Compare with Mason 89\"",
-          "🛋️ View Other Sofas"
-        ]
+          "🎯 Spotlight on Page",
+          "🛍️ 1-Click Buy Now",
+          "🎁 Build 3-Piece Suite",
+          "⚖️ Compare with Another"
+        ],
+        contextUpdate: {
+          selectedProduct: { id: targetVariantId, title: targetTitle, handle: targetHandle, price: targetPrice, variantId: targetVariantId },
+          roomDimensions: { width: roomW, length: roomL }
+        }
       }, { headers: corsHeaders });
     }
 
