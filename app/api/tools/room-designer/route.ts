@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       if (graphQLRes?.data?.products?.edges) {
         const normalized = graphQLRes.data.products.edges
           .map((e: any) => normalizeProductSummary(e.node))
-          .filter((p: ProductSummary) => p.inStock && p.priceRange.min <= budgetCap);
+          .filter((p: ProductSummary) => p.inStock && p.minPrice <= budgetCap);
 
         matchedProducts = normalized.slice(0, 3);
       }
@@ -94,19 +94,15 @@ export async function POST(request: NextRequest) {
             vendor: "Luonto",
             productType: "Sleeper Sofa",
             featuredImage: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80",
-            priceRange: { min: 1899.00, max: 2199.00 },
+            minPrice: 1899.00,
+            maxPrice: 2199.00,
+            currency: "USD",
             inStock: true,
             totalInventory: 6,
-            variants: [
-              {
-                id: "gid://shopify/ProductVariant/48745536979112",
-                title: "Queen / Sand Performance",
-                price: 1899.00,
-                availableForSale: true,
-                inventoryQuantity: 4,
-                selectedOptions: [{ name: "Size", value: "Queen" }]
-              }
-            ]
+            availableColors: ["Sand"],
+            availableSizes: ["Queen"],
+            tags: ["in-stock", "sleeper"],
+            matchedVariantId: "48745536979112"
           },
           {
             id: "gid://shopify/Product/8123991209381",
@@ -115,19 +111,15 @@ export async function POST(request: NextRequest) {
             vendor: "Jennifer Collection",
             productType: "Sleeper Sofa",
             featuredImage: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&w=800&q=80",
-            priceRange: { min: 699.99, max: 799.99 },
+            minPrice: 699.99,
+            maxPrice: 799.99,
+            currency: "USD",
             inStock: true,
             totalInventory: 12,
-            variants: [
-              {
-                id: "gid://shopify/ProductVariant/44910283948192",
-                title: "Full / Charcoal",
-                price: 699.99,
-                availableForSale: true,
-                inventoryQuantity: 8,
-                selectedOptions: [{ name: "Size", value: "Full" }]
-              }
-            ]
+            availableColors: ["Charcoal"],
+            availableSizes: ["Full"],
+            tags: ["in-stock", "sleeper"],
+            matchedVariantId: "44910283948192"
           }
         ];
       } else if (isLeatherPreferred) {
@@ -139,19 +131,15 @@ export async function POST(request: NextRequest) {
             vendor: "Jennifer Leather Collection",
             productType: "Leather Sofa",
             featuredImage: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=800&q=80",
-            priceRange: { min: 1695.00, max: 1895.00 },
+            minPrice: 1695.00,
+            maxPrice: 1895.00,
+            currency: "USD",
             inStock: true,
             totalInventory: 5,
-            variants: [
-              {
-                id: "gid://shopify/ProductVariant/48745536979201",
-                title: "Cognac Top-Grain Leather",
-                price: 1695.00,
-                availableForSale: true,
-                inventoryQuantity: 5,
-                selectedOptions: [{ name: "Color", value: "Cognac" }]
-              }
-            ]
+            availableColors: ["Cognac"],
+            availableSizes: ["89\""],
+            tags: ["in-stock", "leather"],
+            matchedVariantId: "48745536979201"
           },
           {
             id: "gid://shopify/Product/7192849182390",
@@ -160,19 +148,15 @@ export async function POST(request: NextRequest) {
             vendor: "Jennifer Collection",
             productType: "Sectional",
             featuredImage: "https://images.unsplash.com/photo-1550581190-9c1c48d21d6c?auto=format&fit=crop&w=800&q=80",
-            priceRange: { min: 699.99, max: 799.99 },
+            minPrice: 699.99,
+            maxPrice: 799.99,
+            currency: "USD",
             inStock: true,
             totalInventory: 14,
-            variants: [
-              {
-                id: "gid://shopify/ProductVariant/43891029384918",
-                title: "Right-Facing / Slate",
-                price: 699.99,
-                availableForSale: true,
-                inventoryQuantity: 9,
-                selectedOptions: [{ name: "Orientation", value: "Right-Facing" }]
-              }
-            ]
+            availableColors: ["Slate"],
+            availableSizes: ["Standard"],
+            tags: ["in-stock", "sectional"],
+            matchedVariantId: "43891029384918"
           }
         ];
       } else {
@@ -184,19 +168,15 @@ export async function POST(request: NextRequest) {
             vendor: "Jennifer Living",
             productType: "Fabric Sofa",
             featuredImage: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=800&q=80",
-            priceRange: { min: 1399.99, max: 1599.99 },
+            minPrice: 1399.99,
+            maxPrice: 1599.99,
+            currency: "USD",
             inStock: true,
             totalInventory: 8,
-            variants: [
-              {
-                id: "gid://shopify/ProductVariant/45829102938192",
-                title: "Oatmeal Linen",
-                price: 1399.99,
-                availableForSale: true,
-                inventoryQuantity: 6,
-                selectedOptions: [{ name: "Fabric", value: "Oatmeal Linen" }]
-              }
-            ]
+            availableColors: ["Oatmeal"],
+            availableSizes: ["86\""],
+            tags: ["in-stock", "linen"],
+            matchedVariantId: "45829102938192"
           }
         ];
       }
@@ -225,8 +205,8 @@ export async function POST(request: NextRequest) {
     };
 
     // 4. Coordinated 3-Piece Suite & Cushion Package
-    const primaryVariantId = primarySofa.variants?.[0]?.id || primarySofa.id;
-    const rawPrimaryPrice = primarySofa.priceRange.min;
+    const primaryVariantId = primarySofa.matchedVariantId || primarySofa.id;
+    const rawPrimaryPrice = primarySofa.minPrice;
 
     const coordinatedAccents = [
       {
