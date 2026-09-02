@@ -1,3 +1,18 @@
+export type ImageRole =
+  | "canonical_product_view"
+  | "product_angle"
+  | "lifestyle_room_view"
+  | "fabric_swatch"
+  | "dimension_diagram";
+
+export interface ProductVisualAsset {
+  url: string;
+  imageBase64?: string; // data:image/jpeg;base64,...
+  imageRole: ImageRole;
+  altText?: string | null;
+  geometryPreservationPrompt?: string;
+}
+
 export interface ProductVariant {
   id: string;
   title: string;
@@ -6,6 +21,8 @@ export interface ProductVariant {
   compareAtPrice?: string | null;
   availableForSale: boolean;
   inventoryQuantity: number;
+  inStock: boolean;
+  stockStatus: "PHYSICAL_STOCK_VERIFIED" | "ZERO_STOCK_UNAVAILABLE" | "BACKORDER_PERMITTED";
   selectedOptions: {
     name: string;
     value: string;

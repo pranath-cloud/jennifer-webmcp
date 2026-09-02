@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
 import { GET_PRODUCT_DETAILS_QUERY, SEARCH_PRODUCTS_QUERY } from "@/lib/shopify/queries";
 import { normalizeProductDetailed } from "@/lib/shopify/normalizer";
+import { fetchImageAsBase64, buildGeometryPreservationPrompt } from "@/lib/shopify/image-proxy";
 
 export async function POST(request: NextRequest) {
   try {
@@ -55,9 +56,33 @@ export async function POST(request: NextRequest) {
 
     const detailedProduct = normalizeProductDetailed(productNode);
 
+    // Fetch primary canonical base64 visual asset
+    const canonicalImage =
+      detailedProduct.images?.find((img: any) => img.imageRole === "canonical_product_view") ||
+      detailedProduct.images?.[0] ||
+      (detailedProduct.featuredImage ? { url: detailedProduct.featuredImage, altText: detailedProduct.title } : null);
+
+    let imageBase64: string | null = null;
+    if (canonicalImage?.url) {
+      imageBase64 = await fetchImageAsBase64(canonicalImage.url);
+    }
+
+    const geometryPreservationPrompt = buildGeometryPreservationPrompt(
+      detailedProduct.title,
+      detailedProduct.specifications.dimensions,
+      detailedProduct.specifications.materials,
+      detailedProduct.specifications.fabricDetails
+    );
+
     return NextResponse.json({
       success: true,
       product: detailedProduct,
+      primaryVisualAsset: {
+        canonicalUrl: canonicalImage?.url || null,
+        imageBase64,
+        imageRole: "canonical_product_view",
+        geometryPreservationPrompt,
+      },
     });
   } catch (error: any) {
     console.error("Details API Error:", error);

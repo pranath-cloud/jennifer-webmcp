@@ -132,22 +132,49 @@ export function normalizeProductDetailed(node: any): ProductDetailed {
   );
   const ratingCount = ratingMeta ? parseInt(ratingMeta.value, 10) : null;
 
-  const variants: ProductVariant[] = (node.variants?.edges || []).map((e: any) => ({
-    id: e.node.id,
-    title: e.node.title,
-    sku: e.node.sku || "",
-    price: e.node.price,
-    compareAtPrice: e.node.compareAtPrice,
-    availableForSale: e.node.availableForSale ?? true,
-    inventoryQuantity: e.node.inventoryQuantity ?? 0,
-    selectedOptions: e.node.selectedOptions || [],
-    image: e.node.image,
-  }));
+  const variants: ProductVariant[] = (node.variants?.edges || []).map((e: any) => {
+    const qty = e.node.inventoryQuantity ?? 0;
+    const available = e.node.availableForSale ?? true;
+    const inStock = qty > 0;
+    const stockStatus = inStock
+      ? ("PHYSICAL_STOCK_VERIFIED" as const)
+      : (available ? ("BACKORDER_PERMITTED" as const) : ("ZERO_STOCK_UNAVAILABLE" as const));
 
-  const images = (node.images?.edges || []).map((e: any) => ({
-    url: e.node.url,
-    altText: e.node.altText,
-  }));
+    return {
+      id: e.node.id,
+      title: e.node.title,
+      sku: e.node.sku || "",
+      price: e.node.price,
+      compareAtPrice: e.node.compareAtPrice,
+      availableForSale: available,
+      inventoryQuantity: qty,
+      inStock,
+      stockStatus,
+      selectedOptions: e.node.selectedOptions || [],
+      image: e.node.image,
+    };
+  });
+
+  const images = (node.images?.edges || []).map((e: any, index: number) => {
+    const alt = (e.node.altText || "").toLowerCase();
+    let imageRole: "canonical_product_view" | "product_angle" | "lifestyle_room_view" | "fabric_swatch" | "dimension_diagram" = "product_angle";
+
+    if (index === 0) {
+      imageRole = "canonical_product_view";
+    } else if (alt.includes("swatch") || alt.includes("fabric") || alt.includes("leather")) {
+      imageRole = "fabric_swatch";
+    } else if (alt.includes("dimension") || alt.includes("measure") || alt.includes("diagram")) {
+      imageRole = "dimension_diagram";
+    } else if (alt.includes("room") || alt.includes("living") || alt.includes("lifestyle")) {
+      imageRole = "lifestyle_room_view";
+    }
+
+    return {
+      url: e.node.url,
+      altText: e.node.altText,
+      imageRole,
+    };
+  });
 
   return {
     ...summary,

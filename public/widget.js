@@ -106,6 +106,18 @@
           body: JSON.stringify(args)
         }).then(function(r) { return r.json(); });
       }
+    },
+    {
+      name: "get_product_visual_asset",
+      description: "Fetches byte-level Base64 image data and geometry preservation directives for high-fidelity visual room staging.",
+      inputSchema: { type: "object", properties: { handle: { type: "string" }, product_id: { type: "string" } } },
+      execute: function(args) {
+        return fetch(API_BASE + "/api/tools/visual-asset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(args)
+        }).then(function(r) { return r.json(); });
+      }
     }
   ];
 

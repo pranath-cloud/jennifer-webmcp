@@ -9,6 +9,7 @@ import {
   COMPARE_PRODUCTS_DEEP_SCHEMA,
   BUILD_ROOM_BUNDLE_SCHEMA,
   ANALYZE_ROOM_PHOTO_SCHEMA,
+  GET_PRODUCT_VISUAL_ASSET_SCHEMA,
   GET_STORE_REVENUE_SCHEMA,
   GET_INVENTORY_HEALTH_SCHEMA,
   ANALYZE_CUSTOMER_TRENDS_SCHEMA,
@@ -237,6 +238,39 @@ export async function GET(request: NextRequest) {
                     properties: {
                       success: { type: "boolean" },
                       data: { type: "object" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      "/api/tools/visual-asset": {
+        post: {
+          operationId: "get_product_visual_asset",
+          summary: "Get Canonical Base64 Product Visual Asset & Geometry Preservation Directives",
+          description:
+            "Fetches byte-level Base64 image data and explicit geometry preservation prompt for high-fidelity room staging with GPT-4o Vision and diffusion image generation.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: GET_PRODUCT_VISUAL_ASSET_SCHEMA,
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: "Byte-level visual asset, dimensions, and geometry prompt returned",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      success: { type: "boolean" },
+                      content: { type: "array" },
+                      structuredContent: { type: "object" },
                     },
                   },
                 },

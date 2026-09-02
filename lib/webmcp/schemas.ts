@@ -219,6 +219,21 @@ export const ANALYZE_ROOM_PHOTO_SCHEMA = {
   },
 };
 
+// 5. First-Class Product Visual Asset & Geometry Bridge Schema
+export const GET_PRODUCT_VISUAL_ASSET_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    handle: {
+      type: "string",
+      description: "The Shopify product URL handle (e.g., 'stacey-sofa' or 'monika-sleeper-sofa').",
+    },
+    product_id: {
+      type: "string",
+      description: "The Shopify Product ID (e.g., '5408176341160' or 'gid://shopify/Product/5408176341160').",
+    },
+  },
+};
+
 // Admin & Staff Capabilities
 export const AUTHENTICATE_ADMIN_SCHEMA = {
   type: "object" as const,
