@@ -6,7 +6,7 @@
   if (window.__JENNIFER_WEBMCP_WIDGET_INIT__) return;
   window.__JENNIFER_WEBMCP_WIDGET_INIT__ = true;
 
-  var API_BASE = "https://graham-disciplinary-numeric-edinburgh.trycloudflare.com";
+  var API_BASE = "https://jennifer-webmcp.vercel.app";
 
   // 1. Initialize document.modelContext in browser if not native
   var fallbackTools = [];
