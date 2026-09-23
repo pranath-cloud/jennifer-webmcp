@@ -1,0 +1,41 @@
+name: Bug Report
+description: Report a defect in the storefront, agent, or API
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Voice agent / WebMCP
+        - API routes
+        - Cart / checkout
+        - Admin dashboard
+        - Storefront UI
+        - CI / tooling
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Expected vs actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Go to `...`
+        2. Click `...`
+        3. Observe `...`
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / screenshots
+      render: shell
