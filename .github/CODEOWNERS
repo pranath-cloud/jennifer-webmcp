@@ -1,0 +1,7 @@
+# Code owners — requested automatically on PRs that touch matching paths.
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+*          @pranath-cloud
+/app/      @pranath-cloud
+/lib/      @pranath-cloud
+/.github/  @pranath-cloud
