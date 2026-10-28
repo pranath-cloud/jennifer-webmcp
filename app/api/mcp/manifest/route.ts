@@ -8,8 +8,6 @@ import {
   CALCULATE_ROOM_FIT_SCHEMA,
   COMPARE_PRODUCTS_DEEP_SCHEMA,
   BUILD_ROOM_BUNDLE_SCHEMA,
-  ANALYZE_ROOM_PHOTO_SCHEMA,
-  GET_PRODUCT_VISUAL_ASSET_SCHEMA,
   GET_STORE_REVENUE_SCHEMA,
   GET_INVENTORY_HEALTH_SCHEMA,
   ANALYZE_CUSTOMER_TRENDS_SCHEMA,
@@ -214,71 +212,6 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      "/api/tools/room-designer": {
-        post: {
-          operationId: "analyze_room_photo_and_recommend",
-          summary: "Multimodal AI Room Designer & Photo Staging Recommendation",
-          description:
-            "Analyzes an uploaded photo of a living room or hall, evaluates architectural structure, color palette, and cushion comfort needs, calculates spatial clearance, and recommends in-stock sofas under budget with 1-click cart permalinks.",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: ANALYZE_ROOM_PHOTO_SCHEMA,
-              },
-            },
-          },
-          responses: {
-            "200": {
-              description: "Room analysis, matched in-stock sofa recommendations, and bundle summary returned",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      data: { type: "object" },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-      "/api/tools/visual-asset": {
-        post: {
-          operationId: "get_product_visual_asset",
-          summary: "Get Canonical Base64 Product Visual Asset & Geometry Preservation Directives",
-          description:
-            "Fetches byte-level Base64 image data and explicit geometry preservation prompt for high-fidelity room staging with GPT-4o Vision and diffusion image generation.",
-          requestBody: {
-            required: true,
-            content: {
-              "application/json": {
-                schema: GET_PRODUCT_VISUAL_ASSET_SCHEMA,
-              },
-            },
-          },
-          responses: {
-            "200": {
-              description: "Byte-level visual asset, dimensions, and geometry prompt returned",
-              content: {
-                "application/json": {
-                  schema: {
-                    type: "object",
-                    properties: {
-                      success: { type: "boolean" },
-                      content: { type: "array" },
-                      structuredContent: { type: "object" },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
       "/api/products/details": {
         post: {
           operationId: "get_product_details",
@@ -434,6 +367,89 @@ export async function GET(request: NextRequest) {
           },
         },
       },
+      "/api/tools/floorplan": {
+        post: {
+          operationId: "generate_room_floorplan",
+          summary: "Generate 2D architectural room floorplan SVG with clearance pathways",
+          description: "Generates an architectural 2D SVG spatial layout showing wall perimeter, walking clearances (30-36 inches), sofa bounds, coffee table, and fit scorecard.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    room_width_feet: { type: "number", default: 14 },
+                    room_length_feet: { type: "number", default: 12 },
+                    product_title: { type: "string", default: "Luonto Monika Sleeper Sofa" },
+                    sofa_width_inches: { type: "number", default: 84 },
+                    sofa_depth_inches: { type: "number", default: 38 },
+                    include_coffee_table: { type: "boolean", default: true }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "200": {
+              description: "2D SVG Floorplan and clearance scorecard generated"
+            }
+          }
+        }
+      },
+      "/api/tools/fabric-lighting": {
+        post: {
+          operationId: "match_fabric_and_lighting",
+          summary: "Harmonize room wall paint & natural lighting with upholstery fabrics",
+          description: "Cross-references customer room wall paint and window sunlight exposure with manufacturer upholstery swatches and durability ratings.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    wall_color: { type: "string", description: "e.g. warm beige, cool grey, navy" },
+                    window_exposure: { type: "string", description: "e.g. South-Facing, North-Facing" },
+                    flooring_type: { type: "string", default: "Light Hardwood" }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            "200": {
+              description: "Harmonized fabric palettes and lighting recommendations"
+            }
+          }
+        }
+      },
+      "/api/tools/ar-model": {
+        post: {
+          operationId: "get_product_ar_model",
+          summary: "Get 3D Augmented Reality QuickLook (.usdz / .glb) model links",
+          description: "Provides Apple QuickLook (.usdz) and Android SceneViewer (.glb) 3D model links for live augmented reality room placement.",
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    product_handle: { type: "string", description: "Shopify product handle" }
+                  },
+                  required: ["product_handle"]
+                }
+              }
+            }
+          },
+          responses: {
+            "200": {
+              description: "AR model launch links returned"
+            }
+          }
+        }
+      }
     },
   };
 

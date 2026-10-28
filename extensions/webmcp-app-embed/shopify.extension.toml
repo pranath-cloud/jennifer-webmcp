@@ -1,0 +1,12 @@
+api_version = "2024-04"
+
+[[extensions]]
+name = "WebMCP Agent Co-Pilot"
+handle = "webmcp-agent-copilot"
+
+uid = "3fd3b9f9-eabe-661e-6c73-6518ff8c62f936022c45"
+type = "theme"
+
+[[extensions.targeting]]
+target = "body"
+module = "./blocks/webmcp_copilot.liquid"

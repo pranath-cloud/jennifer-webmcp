@@ -1,0 +1,249 @@
+{% comment %}
+  W3C WebMCP & AI Agent Capability Layer for Jennifer Furniture Staging
+  Exposes 14,447 products, live stock verification, room clearance, 2D floorplans, fabric matching, 3D AR, and bundle builders.
+  Connected to Production Vercel: https://webmcp.tendrilsioservices.com
+{% endcomment %}
+
+<meta name="model-context-enabled" content="true" />
+<meta name="model-context-version" content="2024-11-05" />
+
+<!-- 1. Machine-Readable Live In-Stock Catalog for AI Crawlers -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FurnitureStore",
+  "name": {{ shop.name | json }},
+  "url": {{ shop.url | json }},
+  "hasOfferCatalog": {
+    "@type": "OfferCatalog",
+    "name": "Live In-Stock Catalog",
+    "itemListElement": [
+      {%- assign count = 0 -%}
+      {%- for product in collections.all.products -%}
+        {%- if product.available and count < 30 -%}
+          {%- if count > 0 -%},{%- endif -%}
+          {%- assign variant = product.selected_or_first_available_variant -%}
+          {
+            "@type": "Offer",
+            "itemOffered": {
+              "@type": "Product",
+              "name": {{ product.title | json }},
+              "url": {{ shop.url | append: product.url | json }},
+              "offers": {
+                "@type": "Offer",
+                "price": "{{ variant.price | money_without_currency | remove: ',' }}",
+                "priceCurrency": {{ cart.currency.iso_code | json }},
+                "availability": "https://schema.org/InStock",
+                "url": "{{ shop.url }}/cart/{{ variant.id }}:1?discount=WEBMCP10"
+              }
+            }
+          }
+          {%- assign count = count | plus: 1 -%}
+        {%- endif -%}
+      {%- endfor -%}
+    ]
+  }
+}
+</script>
+
+<!-- 2. W3C WebMCP In-Browser Tool Registry -->
+<script>
+(function() {
+  var API_BASE = "https://webmcp.tendrilsioservices.com";
+  var toolsList = [];
+  var toolNames = new Set();
+
+  if (!window.document.modelContext) {
+    window.document.modelContext = {};
+  }
+
+  var nativeReg = typeof window.document.modelContext.registerTool === "function"
+    ? window.document.modelContext.registerTool.bind(window.document.modelContext)
+    : null;
+
+  window.document.modelContext.registerTool = function(t) {
+    if (!t || !t.name || toolNames.has(t.name)) return t;
+    toolNames.add(t.name);
+    toolsList.push(t);
+
+    if (nativeReg) {
+      try {
+        var p = nativeReg(t);
+        if (p && typeof p.catch === "function") p.catch(function() {});
+      } catch(e) {}
+    }
+    return t;
+  };
+
+  window.document.modelContext.getRegisteredTools = function() { return toolsList; };
+  window.document.modelContext.listTools = function() { return toolsList; };
+  window.document.modelContext.getTools = function() { return toolsList; };
+  window.document.modelContext.executeTool = function(name, args) {
+    var tool = toolsList.find(function(t) { return t.name === name; });
+    if (tool && typeof tool.execute === "function") return tool.execute(args);
+    return fetch(API_BASE + "/api/products/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(args || {})
+    }).then(function(r) { return r.json(); });
+  };
+  window.document.modelContext.callTool = function(name, args) {
+    return window.document.modelContext.executeTool(name, args);
+  };
+  try {
+    Object.defineProperty(window.document.modelContext, "tools", {
+      get: function() { return toolsList; },
+      enumerable: true,
+      configurable: true
+    });
+  } catch(e) {}
+  try { window.modelContext = window.document.modelContext; } catch(e) {}
+  try { navigator.modelContext = window.document.modelContext; } catch(e) {}
+
+  // Tool 1: Live Catalog Search
+  document.modelContext.registerTool({
+    name: "find_products_by_constraints",
+    description: "Search live inventory for in-stock products matching category, budget, or material.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: { type: "string", description: "e.g. sofa, sectional" },
+        max_price: { type: "number", description: "Maximum budget in USD" }
+      }
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/products/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+
+  // Tool 2: Living Room Fit & Clearance Calculator
+  document.modelContext.registerTool({
+    name: "calculate_room_fit_and_clearance",
+    description: "Calculate whether a sofa fits specific room dimensions and verify 30-36 inch walking clearance.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        room_width_feet: { type: "number", description: "e.g. 12" },
+        room_length_feet: { type: "number", description: "e.g. 10" },
+        product_handle: { type: "string", description: "e.g. monika-sleeper-sofa" }
+      },
+      required: ["room_width_feet", "room_length_feet", "product_handle"]
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/tools/room-fit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+
+  // Tool 3: 2D Architectural Floorplan Generator
+  document.modelContext.registerTool({
+    name: "generate_room_floorplan",
+    description: "Generates an architectural 2D SVG spatial layout showing wall perimeter, walking clearances, and sofa bounds.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        room_width_feet: { type: "number", default: 14 },
+        room_length_feet: { type: "number", default: 12 },
+        product_title: { type: "string", default: "Luonto Monika Sleeper" }
+      }
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/tools/floorplan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+
+  // Tool 4: Fabric & Lighting Harmonizer
+  document.modelContext.registerTool({
+    name: "match_fabric_and_lighting",
+    description: "Harmonize room wall paint and window natural lighting with upholstery fabrics.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wall_color: { type: "string" },
+        window_exposure: { type: "string" }
+      }
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/tools/fabric-lighting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+
+  // Tool 5: 3D AR Model Placement Bridge
+  document.modelContext.registerTool({
+    name: "get_product_ar_model",
+    description: "Launch Apple QuickLook (.usdz) or Android (.glb) 3D augmented reality models in room.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        product_handle: { type: "string" }
+      },
+      required: ["product_handle"]
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/tools/ar-model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+
+  // Tool 6: Deep Spec Comparison Matrix
+  document.modelContext.registerTool({
+    name: "compare_products_deep_matrix",
+    description: "Compare 2 to 4 products side-by-side on frame materials, fabrics, dimensions, and warranty.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        product_handles: { type: "array", items: { type: "string" } }
+      },
+      required: ["product_handles"]
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/tools/compare-deep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+
+  // Tool 7: Coordinated Room Bundle Builder
+  document.modelContext.registerTool({
+    name: "build_coordinated_room_bundle",
+    description: "Build a 3-piece living room suite (sofa + ottoman + chair) with 15% discount permalink.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        base_product_handle: { type: "string", description: "e.g. monika-sleeper-sofa" }
+      },
+      required: ["base_product_handle"]
+    },
+    execute: function(args) {
+      return fetch(API_BASE + "/api/tools/bundle-builder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(args)
+      }).then(function(r) { return r.json(); });
+    }
+  });
+})();
+</script>
+
+<!-- 3. Standalone On-Site Agentic Sidecar Concierge Widget -->
+<script src="https://webmcp.tendrilsioservices.com/widget.js" defer></script>

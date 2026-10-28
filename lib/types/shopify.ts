@@ -1,18 +1,3 @@
-export type ImageRole =
-  | "canonical_product_view"
-  | "product_angle"
-  | "lifestyle_room_view"
-  | "fabric_swatch"
-  | "dimension_diagram";
-
-export interface ProductVisualAsset {
-  url: string;
-  imageBase64?: string; // data:image/jpeg;base64,...
-  imageRole: ImageRole;
-  altText?: string | null;
-  geometryPreservationPrompt?: string;
-}
-
 export interface ProductVariant {
   id: string;
   title: string;
@@ -21,8 +6,6 @@ export interface ProductVariant {
   compareAtPrice?: string | null;
   availableForSale: boolean;
   inventoryQuantity: number;
-  inStock: boolean;
-  stockStatus: "PHYSICAL_STOCK_VERIFIED" | "ZERO_STOCK_UNAVAILABLE" | "BACKORDER_PERMITTED";
   selectedOptions: {
     name: string;
     value: string;
@@ -59,9 +42,19 @@ export interface ProductSummary {
   totalInventory: number;
   featuredImage?: string | null;
   availableColors: string[];
+  availableMaterials: string[];
   availableSizes: string[];
+  collections?: string[];
+  features?: string[];
+  orientation?: string[];
+  styles?: string[];
+  seatingCapacity?: string[];
   tags: string[];
+  status?: string;
+  publishedAt?: string | null;
   matchedVariantId?: string;
+  /** Color/fabric option values of the variant the featured image belongs to — what the customer actually sees in the grid. */
+  picturedColors?: string[];
 }
 
 export interface ProductDetailed extends ProductSummary {
@@ -79,7 +72,6 @@ export interface ProductDetailed extends ProductSummary {
   images: {
     url: string;
     altText?: string | null;
-    imageRole?: ImageRole;
   }[];
 }
 

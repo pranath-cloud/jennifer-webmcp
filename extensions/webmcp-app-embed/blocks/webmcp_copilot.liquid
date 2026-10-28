@@ -1,0 +1,210 @@
+{% comment %}
+  =============================================================================
+  WebMCP AI Search & Concierge App Embed Extension (Online Store 2.0)
+  Live Dynamic Customizer • Visual Styling Controls • Multi-Tenant Architecture
+  =============================================================================
+{% endcomment %}
+
+<!-- Dynamic Style Injection from Shopify Customizer Settings -->
+<style>
+  :root {
+    {% if block.settings.primary_color != blank and block.settings.primary_color != 'rgba(0,0,0,0)' %}
+      --jmcp-primary: {{ block.settings.primary_color }} !important;
+      --jmcp-accent: {{ block.settings.accent_color | default: block.settings.primary_color }} !important;
+    {% endif %}
+    {% if block.settings.pill_bg_color != blank and block.settings.pill_bg_color != 'rgba(0,0,0,0)' %}
+      --jmcp-toggle-bg: {{ block.settings.pill_bg_color }} !important;
+    {% endif %}
+    {% if block.settings.pill_text_color != blank and block.settings.pill_text_color != 'rgba(0,0,0,0)' %}
+      --jmcp-toggle-text: {{ block.settings.pill_text_color }} !important;
+    {% endif %}
+    {% if block.settings.pill_border_color != blank and block.settings.pill_border_color != 'rgba(0,0,0,0)' %}
+      --jmcp-toggle-border: {{ block.settings.pill_border_color }} !important;
+    {% endif %}
+  }
+
+  {% unless block.settings.show_search_pill %}
+    .jmcp-ai-toggle-btn {
+      display: none !important;
+    }
+  {% endunless %}
+
+  {% unless block.settings.show_quota_badge %}
+    .jmcp-ai-quota-badge {
+      display: none !important;
+    }
+  {% endunless %}
+
+  {% if block.settings.custom_css != blank %}
+    /* Merchant Custom CSS */
+    {{ block.settings.custom_css }}
+  {% endif %}
+</style>
+
+<!-- Synchronous handle:-query scrub — runs during parse, BEFORE first paint,
+     so shoppers never see the raw "handle:a OR handle:b" machine query. The
+     deferred widget.js re-patches as a fallback for SPA-style navigations. -->
+<script>
+(function () {
+  try {
+    if (window.location.pathname.indexOf("/search") === -1) return;
+    var params = new URLSearchParams(window.location.search);
+    var q = params.get("q") || "";
+    var userQ = (params.get("user_q") || "").trim();
+    if (q.indexOf("handle:") === -1 || !userQ) return;
+
+    var HANDLE_RE = /handle:[^\s"'“”]+(\s+OR\s+handle:[^\s"'“”]+)*/g;
+    var dirty = false;
+
+    var fix = function () {
+      document.querySelectorAll("input[name='q'], input[type='search'], .search__input").forEach(function (i) {
+        if (i.value && i.value.indexOf("handle:") !== -1) i.value = userQ;
+      });
+      var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      var node, nodes = [];
+      while ((node = walker.nextNode())) {
+        if (node.nodeValue.indexOf("handle:") !== -1) nodes.push(node);
+      }
+      nodes.forEach(function (n) { n.nodeValue = n.nodeValue.replace(HANDLE_RE, userQ); });
+      if (document.title.indexOf("handle:") !== -1) {
+        document.title = document.title.replace(HANDLE_RE, userQ);
+      }
+      dirty = false;
+    };
+
+    fix();
+
+    // PageFly/theme JS can render the search UI after us — re-scrub for a
+    // few seconds, then stop so the observer doesn't live forever.
+    var mo = new MutationObserver(function () {
+      if (dirty) return;
+      dirty = true;
+      setTimeout(fix, 0);
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true, characterData: true });
+    setTimeout(function () { mo.disconnect(); }, 6000);
+  } catch (e) { /* never break the storefront over cosmetics */ }
+})();
+</script>
+
+<script 
+  src="{{ block.settings.script_url | default: 'https://webmcp.tendrilsioservices.com/widget.js' }}" 
+  data-shop="{{ shop.permanent_domain }}" 
+  data-brand-name="{{ block.settings.brand_name | default: shop.name | escape }}"
+  data-theme-id="{{ block.settings.theme_preset | default: 'luxury-minimalist' }}"
+  data-discount-code="{{ block.settings.discount_code | default: 'WEBMCP10' }}"
+  defer>
+</script>
+
+<meta name="model-context-enabled" content="true">
+<meta name="model-context-endpoint" content="{{ block.settings.endpoint_url | default: 'https://webmcp.tendrilsioservices.com/api/mcp' }}">
+<link rel="model-context" href="{{ block.settings.endpoint_url | default: 'https://webmcp.tendrilsioservices.com/api/mcp' }}">
+<link rel="alternate" type="application/json+mcp" href="{{ block.settings.endpoint_url | default: 'https://webmcp.tendrilsioservices.com/api/mcp' }}">
+
+{% schema %}
+{
+  "name": "WebMCP AI Search",
+  "target": "body",
+  "settings": [
+    {
+      "type": "header",
+      "content": "Theme & Visual Appearance"
+    },
+    {
+      "type": "select",
+      "id": "theme_preset",
+      "label": "Design Preset",
+      "options": [
+        { "value": "warm-artisan", "label": "Warm Artisan (Terracotta & Amber)" },
+        { "value": "luxury-minimalist", "label": "Luxury Minimalist (Charcoal & Slate)" },
+        { "value": "dark-mode-elegance", "label": "High-Tech Midnight (Dark Mode)" },
+        { "value": "classic-heritage", "label": "Classic Heritage (Navy & Gold)" }
+      ],
+      "default": "luxury-minimalist"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Brand Primary Color",
+      "default": "#e84c24"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent / Highlight Color",
+      "default": "#ea580c"
+    },
+    {
+      "type": "header",
+      "content": "Search Bar Pill Controls"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_search_pill",
+      "label": "Show In-Search AI Badge",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_quota_badge",
+      "label": "Show Quota Badge (e.g. 10 left)",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "pill_bg_color",
+      "label": "Pill Background Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "pill_text_color",
+      "label": "Pill Text Color",
+      "default": "#1e293b"
+    },
+    {
+      "type": "color",
+      "id": "pill_border_color",
+      "label": "Pill Border Color",
+      "default": "#fed7aa"
+    },
+    {
+      "type": "text",
+      "id": "brand_name",
+      "label": "Brand Name (leave empty to auto-detect)"
+    },
+    {
+      "type": "text",
+      "id": "discount_code",
+      "label": "Checkout Discount Code",
+      "default": "WEBMCP10"
+    },
+    {
+      "type": "header",
+      "content": "Custom CSS Editor"
+    },
+    {
+      "type": "textarea",
+      "id": "custom_css",
+      "label": "Custom CSS Overrides",
+      "info": "Paste any custom CSS rules here (e.g. .jmcp-ai-toggle-btn { right: 120px !important; })"
+    },
+    {
+      "type": "header",
+      "content": "Advanced Endpoints"
+    },
+    {
+      "type": "text",
+      "id": "script_url",
+      "label": "Widget Script URL",
+      "default": "https://webmcp.tendrilsioservices.com/widget.js"
+    },
+    {
+      "type": "text",
+      "id": "endpoint_url",
+      "label": "MCP Server Endpoint",
+      "default": "https://webmcp.tendrilsioservices.com/api/mcp"
+    }
+  ]
+}
+{% endschema %}

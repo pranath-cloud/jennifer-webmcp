@@ -1,0 +1,35 @@
+{% comment %}
+  =============================================================================
+  WebMCP AI Concierge & Zero-Clash AI Search Optimizer
+  Drop-in Shopify Theme Snippet (Universal Multi-Tenant)
+  
+  Installation:
+    Add {% render 'webmcp-ai-concierge' %} inside layout/theme.liquid before </body>
+  =============================================================================
+{% endcomment %}
+
+<!-- WebMCP Brand & Theming Settings -->
+<style>
+  :root {
+    /* Customizable Brand Colors - Edit right here in Liquid */
+    --jmcp-primary: {{ settings.colors_accent_1 | default: '#38bdf8' }};
+    --jmcp-primary-hover: {{ settings.colors_accent_2 | default: '#0284c7' }};
+    --jmcp-bg: #09090b;
+    --jmcp-card-bg: #121214;
+    --jmcp-text: #fafafa;
+    --jmcp-text-muted: #a1a1aa;
+    --jmcp-border: rgba(255, 255, 255, 0.12);
+    --jmcp-radius: 16px;
+    --jmcp-btn-radius: 6px;
+    --jmcp-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+</style>
+
+<!-- WebMCP Universal Script -->
+<script 
+  src="https://webmcp.tendrilsioservices.com/widget.js" 
+  data-shop="{{ shop.permanent_domain | default: shop.domain }}" 
+  data-brand-name="{{ shop.name | default: 'Jennifer Furniture' }}"
+  data-discount-code="WEBMCP10"
+  async>
+</script>

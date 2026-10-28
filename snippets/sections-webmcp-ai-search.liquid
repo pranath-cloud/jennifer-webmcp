@@ -1,0 +1,160 @@
+{% comment %}
+  =============================================================================
+  WebMCP AI Search & Concierge (Shopify Native Theme Section)
+  Zero Owner Permissions Required • Full Visual Customizer in Shopify Admin
+  =============================================================================
+{% endcomment %}
+
+{% if section.settings.enabled %}
+  <!-- Dynamic Theme Customizer Styles -->
+  <style>
+    :root {
+      {% if section.settings.primary_color != blank and section.settings.primary_color != 'rgba(0,0,0,0)' %}
+        --jmcp-primary: {{ section.settings.primary_color }} !important;
+        --jmcp-accent: {{ section.settings.accent_color | default: section.settings.primary_color }} !important;
+      {% endif %}
+      {% if section.settings.pill_bg_color != blank and section.settings.pill_bg_color != 'rgba(0,0,0,0)' %}
+        --jmcp-toggle-bg: {{ section.settings.pill_bg_color }} !important;
+      {% endif %}
+      {% if section.settings.pill_text_color != blank and section.settings.pill_text_color != 'rgba(0,0,0,0)' %}
+        --jmcp-toggle-text: {{ section.settings.pill_text_color }} !important;
+      {% endif %}
+      {% if section.settings.pill_border_color != blank and section.settings.pill_border_color != 'rgba(0,0,0,0)' %}
+        --jmcp-toggle-border: {{ section.settings.pill_border_color }} !important;
+      {% endif %}
+    }
+
+    {% unless section.settings.show_search_pill %}
+      .jmcp-ai-toggle-btn {
+        display: none !important;
+      }
+    {% endunless %}
+
+    {% unless section.settings.show_quota_badge %}
+      .jmcp-ai-quota-badge {
+        display: none !important;
+      }
+    {% endunless %}
+
+    {% if section.settings.custom_css != blank %}
+      {{ section.settings.custom_css }}
+    {% endif %}
+  </style>
+
+  <!-- WebMCP Universal Engine Script -->
+  <script 
+    src="https://webmcp.tendrilsioservices.com/widget.js" 
+    data-shop="{{ shop.permanent_domain | default: 'comfortfurniture.myshopify.com' }}" 
+    data-brand-name="{{ section.settings.brand_name | default: 'Comfort Furniture' | escape }}"
+    data-theme-id="{{ section.settings.theme_preset | default: 'warm-artisan' }}"
+    data-discount-code="{{ section.settings.discount_code | default: 'COMFORT10' }}" 
+    async>
+  </script>
+{% endif %}
+
+{% schema %}
+{
+  "name": "WebMCP AI Search",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "enabled",
+      "label": "Enable WebMCP AI Search",
+      "default": true
+    },
+    {
+      "type": "header",
+      "content": "Visual Theme & Colors"
+    },
+    {
+      "type": "select",
+      "id": "theme_preset",
+      "label": "Theme Preset",
+      "options": [
+        { "value": "warm-artisan", "label": "Warm Artisan (Terracotta & Amber)" },
+        { "value": "luxury-minimalist", "label": "Luxury Minimalist (Charcoal & Slate)" },
+        { "value": "dark-mode-elegance", "label": "High-Tech Midnight (Dark Mode)" },
+        { "value": "classic-heritage", "label": "Classic Heritage (Navy & Gold)" }
+      ],
+      "default": "warm-artisan"
+    },
+    {
+      "type": "color",
+      "id": "primary_color",
+      "label": "Brand Primary Color",
+      "default": "#e84c24"
+    },
+    {
+      "type": "color",
+      "id": "accent_color",
+      "label": "Accent Color",
+      "default": "#ea580c"
+    },
+    {
+      "type": "header",
+      "content": "Search Bar Pill Controls"
+    },
+    {
+      "type": "checkbox",
+      "id": "show_search_pill",
+      "label": "Show In-Search AI Badge",
+      "default": true
+    },
+    {
+      "type": "checkbox",
+      "id": "show_quota_badge",
+      "label": "Show Quota Badge (10 left)",
+      "default": true
+    },
+    {
+      "type": "color",
+      "id": "pill_bg_color",
+      "label": "Pill Background Color",
+      "default": "#ffffff"
+    },
+    {
+      "type": "color",
+      "id": "pill_text_color",
+      "label": "Pill Text Color",
+      "default": "#7c2d12"
+    },
+    {
+      "type": "color",
+      "id": "pill_border_color",
+      "label": "Pill Border Color",
+      "default": "#fed7aa"
+    },
+    {
+      "type": "header",
+      "content": "Brand & Checkout"
+    },
+    {
+      "type": "text",
+      "id": "brand_name",
+      "label": "Brand Name",
+      "default": "Comfort Furniture"
+    },
+    {
+      "type": "text",
+      "id": "discount_code",
+      "label": "Checkout Discount Code",
+      "default": "COMFORT10"
+    },
+    {
+      "type": "header",
+      "content": "Custom CSS"
+    },
+    {
+      "type": "textarea",
+      "id": "custom_css",
+      "label": "Custom CSS Overrides",
+      "info": "Add any custom CSS rules here (e.g. .jmcp-ai-toggle-btn { right: 120px !important; })"
+    }
+  ],
+  "presets": [
+    {
+      "name": "WebMCP AI Search"
+    }
+  ]
+}
+{% endschema %}

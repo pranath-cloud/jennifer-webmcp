@@ -91,14 +91,92 @@ export function normalizeProductSummary(node: any): ProductSummary {
   const colorOption = node.options?.find(
     (o: any) => o.name.toLowerCase() === "color" || o.name.toLowerCase() === "finish"
   );
+  const materialOption = node.options?.find(
+    (o: any) => o.name.toLowerCase() === "material" || o.name.toLowerCase() === "fabric" || o.name.toLowerCase() === "upholstery"
+  );
   const sizeOption = node.options?.find(
     (o: any) => o.name.toLowerCase() === "size" || o.name.toLowerCase() === "configuration"
   );
 
-  const availableColors = colorOption ? colorOption.values : [];
-  const availableSizes = sizeOption ? sizeOption.values : [];
+  const optionColors: string[] = colorOption ? colorOption.values : [];
+  const optionMaterials: string[] = materialOption ? materialOption.values : [];
+  const availableSizes: string[] = sizeOption ? sizeOption.values : [];
 
-  const inStock = (node.totalInventory ?? 0) > 0 || (node.variants?.edges?.some((v: any) => v.node.availableForSale) ?? false);
+  const variantColors: string[] = (node.variants?.edges || []).flatMap((v: any) => 
+    (v.node?.selectedOptions || [])
+      .filter((so: any) => so.name && (so.name.toLowerCase() === "color" || so.name.toLowerCase() === "finish"))
+      .map((so: any) => so.value)
+  );
+  const variantMaterials: string[] = (node.variants?.edges || []).flatMap((v: any) => 
+    (v.node?.selectedOptions || [])
+      .filter((so: any) => so.name && (so.name.toLowerCase() === "material" || so.name.toLowerCase() === "fabric" || so.name.toLowerCase() === "upholstery"))
+      .map((so: any) => so.value)
+  );
+
+  const metafieldNodes: any[] = node.metafields?.edges?.map((e: any) => e.node) || [];
+  const collections: string[] = node.collections?.edges?.map((e: any) => e.node.title) || [];
+
+  function parseMetaList(metaKeySubstrings: string[]): string[] {
+    const results: string[] = [];
+    for (const m of metafieldNodes) {
+      const fullKey = `${m.namespace}.${m.key}`.toLowerCase();
+      if (metaKeySubstrings.some(sub => fullKey.includes(sub))) {
+        if (!m.value) continue;
+        try {
+          const parsed = JSON.parse(m.value);
+          if (Array.isArray(parsed)) {
+            results.push(...parsed.map(String));
+          } else if (typeof parsed === "string") {
+            results.push(parsed);
+          } else if (typeof parsed === "object" && parsed.children) {
+            // Rich text field format
+            const textContent = cleanHtmlText(JSON.stringify(parsed));
+            if (textContent) results.push(textContent);
+          }
+        } catch {
+          results.push(String(m.value));
+        }
+      }
+    }
+    return results.filter(Boolean);
+  }
+
+  const metaColors = parseMetaList(["color"]);
+  const metaMaterials = parseMetaList(["material", "fabric", "upholstery"]);
+  const metaFeatures = parseMetaList(["feature", "function"]);
+  const metaOrientations = parseMetaList(["orientation"]);
+  const metaStyles = parseMetaList(["style"]);
+  const metaSeats = parseMetaList(["seat", "capacity"]);
+  const metaSizes = parseMetaList(["size", "width", "dimension"]);
+
+  const availableColors = Array.from(new Set([...optionColors, ...variantColors, ...metaColors].filter(Boolean)));
+  const availableMaterials = Array.from(new Set([...optionMaterials, ...variantMaterials, ...metaMaterials].filter(Boolean)));
+  const availableSizesCombined = Array.from(new Set([...availableSizes, ...metaSizes].filter(Boolean)));
+
+  // Which variant does the featured image belong to? Its options are the
+  // colors the customer actually SEES in the grid — "has a green variant"
+  // and "pictures green" are different claims.
+  const vEdges: any[] = node.variants?.edges || [];
+
+  // "In stock" = can be purchased right now. availableForSale is Shopify's
+  // authoritative flag (respects continue-selling policy + fulfillment
+  // locations); totalInventory sums ALL locations — a chair with 100 units in
+  // a showroom that doesn't fulfill online is still unbuyable, so only use it
+  // when no variant payload was fetched.
+  const inStock = vEdges.length > 0
+    ? vEdges.some((v: any) => v.node?.availableForSale !== false)
+    : (node.totalInventory ?? 0) > 0;
+  let picturedColors: string[] = [];
+  const featuredUrl = (node.featuredImage?.url || "").split("?")[0];
+  if (vEdges.length > 0) {
+    const pictured =
+      (featuredUrl && vEdges.find((v: any) => (v.node?.image?.url || "").split("?")[0] === featuredUrl)) ||
+      vEdges[0];
+    picturedColors = (pictured?.node?.selectedOptions || [])
+      .filter((so: any) => so.name && /color|fabric|material|finish|upholstery|leather/i.test(so.name))
+      .map((so: any) => so.value)
+      .filter(Boolean);
+  }
 
   return {
     id: node.id,
@@ -113,9 +191,18 @@ export function normalizeProductSummary(node: any): ProductSummary {
     totalInventory: node.totalInventory ?? 0,
     featuredImage: node.featuredImage?.url || null,
     availableColors,
-    availableSizes,
+    availableMaterials,
+    availableSizes: availableSizesCombined,
+    collections,
+    features: metaFeatures,
+    orientation: metaOrientations,
+    styles: metaStyles,
+    seatingCapacity: metaSeats,
     tags: node.tags || [],
+    status: node.status || undefined,
+    publishedAt: node.publishedAt || null,
     matchedVariantId: node.variants?.edges?.[0]?.node?.id,
+    picturedColors,
   };
 }
 
@@ -132,49 +219,22 @@ export function normalizeProductDetailed(node: any): ProductDetailed {
   );
   const ratingCount = ratingMeta ? parseInt(ratingMeta.value, 10) : null;
 
-  const variants: ProductVariant[] = (node.variants?.edges || []).map((e: any) => {
-    const qty = e.node.inventoryQuantity ?? 0;
-    const available = e.node.availableForSale ?? true;
-    const inStock = qty > 0;
-    const stockStatus = inStock
-      ? ("PHYSICAL_STOCK_VERIFIED" as const)
-      : (available ? ("BACKORDER_PERMITTED" as const) : ("ZERO_STOCK_UNAVAILABLE" as const));
+  const variants: ProductVariant[] = (node.variants?.edges || []).map((e: any) => ({
+    id: e.node.id,
+    title: e.node.title,
+    sku: e.node.sku || "",
+    price: e.node.price,
+    compareAtPrice: e.node.compareAtPrice,
+    availableForSale: e.node.availableForSale ?? true,
+    inventoryQuantity: e.node.inventoryQuantity ?? 0,
+    selectedOptions: e.node.selectedOptions || [],
+    image: e.node.image,
+  }));
 
-    return {
-      id: e.node.id,
-      title: e.node.title,
-      sku: e.node.sku || "",
-      price: e.node.price,
-      compareAtPrice: e.node.compareAtPrice,
-      availableForSale: available,
-      inventoryQuantity: qty,
-      inStock,
-      stockStatus,
-      selectedOptions: e.node.selectedOptions || [],
-      image: e.node.image,
-    };
-  });
-
-  const images = (node.images?.edges || []).map((e: any, index: number) => {
-    const alt = (e.node.altText || "").toLowerCase();
-    let imageRole: "canonical_product_view" | "product_angle" | "lifestyle_room_view" | "fabric_swatch" | "dimension_diagram" = "product_angle";
-
-    if (index === 0) {
-      imageRole = "canonical_product_view";
-    } else if (alt.includes("swatch") || alt.includes("fabric") || alt.includes("leather")) {
-      imageRole = "fabric_swatch";
-    } else if (alt.includes("dimension") || alt.includes("measure") || alt.includes("diagram")) {
-      imageRole = "dimension_diagram";
-    } else if (alt.includes("room") || alt.includes("living") || alt.includes("lifestyle")) {
-      imageRole = "lifestyle_room_view";
-    }
-
-    return {
-      url: e.node.url,
-      altText: e.node.altText,
-      imageRole,
-    };
-  });
+  const images = (node.images?.edges || []).map((e: any) => ({
+    url: e.node.url,
+    altText: e.node.altText,
+  }));
 
   return {
     ...summary,

@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
 
-const ADMIN_SECRET_KEY =
-  process.env.ADMIN_SECRET_KEY || "jennifer_admin_secret_2026";
+const ADMIN_SECRET_KEY = process.env.ADMIN_SECRET_KEY;
 
 export function verifyAdminAuth(request: NextRequest): boolean {
+  if (!ADMIN_SECRET_KEY) return false;
+
   // 1. Check Bearer Authorization Header
   const authHeader = request.headers.get("authorization");
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -23,9 +24,8 @@ export function verifyAdminAuth(request: NextRequest): boolean {
 }
 
 export function validateAdminCredentials(keyOrPass: string): boolean {
-  if (!keyOrPass) return false;
-  const clean = keyOrPass.trim();
-  return clean === ADMIN_SECRET_KEY || clean === "admin123" || clean === "jennifer_admin_2026";
+  if (!keyOrPass || !ADMIN_SECRET_KEY) return false;
+  return keyOrPass.trim() === ADMIN_SECRET_KEY;
 }
 
 export function generateAdminSessionToken(): string {

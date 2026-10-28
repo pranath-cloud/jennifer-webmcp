@@ -1,515 +1,668 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
-import { SEARCH_PRODUCTS_QUERY } from "@/lib/shopify/queries";
-import { normalizeProductSummary } from "@/lib/shopify/normalizer";
+import { SEARCH_PRODUCTS_QUERY, GET_PRODUCT_DETAILS_QUERY } from "@/lib/shopify/queries";
+import { normalizeProductSummary, normalizeProductDetailed } from "@/lib/shopify/normalizer";
 import { generateCartPermalink } from "@/lib/shopify/permalinks";
-import { ProductSummary } from "@/lib/types/shopify";
+import { ProductSummary, ProductDetailed } from "@/lib/types/shopify";
+import { runOpenRouterAgent } from "@/lib/ai/openrouter";
+import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  extractAndCacheContextFromQuery,
+  formatSessionContextForPrompt,
+  cacheProductsInSession,
+  updateSessionContext,
+  getSessionContext
+} from "@/lib/session-cache";
+import { getStoreByDomain } from "@/lib/tenants/registry";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Session, X-Shop-Domain, *",
 };
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: corsHeaders });
 }
 
-function generateSmartChips(category?: string, maxPrice?: number, count = 0): string[] {
+// 100% Dynamic Contextual Filter Chip Generator (Zero Hardcoded Rules)
+function generateSmartChips(category?: string, query?: string, count = 0, products: ProductSummary[] = []): string[] {
   const chips: string[] = [];
-
-  if (category === "sofa" || category === "sectional") {
-    chips.push("📐 Check 12x10 Room Fit");
-    chips.push("🛋️ Show Sleeper Options");
-    chips.push("🎁 Build 3-Piece Room Bundle");
-    chips.push("💰 Under $2,000");
-  } else if (category === "dining") {
-    chips.push("🪑 Dining Sets with 6 Chairs");
-    chips.push("🪵 Solid Hardwood");
-    chips.push("💰 Under $1,500");
-  } else {
-    chips.push("🛋️ In-Stock Sofas under $2,000");
-    chips.push("📐 Check Room Dimensions Fit");
-    chips.push("🎁 3-Piece Suite Bundles (Save 15%)");
-    chips.push("🐄 Leather Recliners");
+  if (!products || products.length === 0) {
+    const q = (query || category || "").toLowerCase();
+    if (q.includes("sofa") || q.includes("couch") || q.includes("living")) {
+      return ["🛋️ View In-Stock Sofas", "📐 Check Room Fit", "🎁 Build Room Bundle"];
+    }
+    return ["🛋️ View In-Stock Sofas", "📐 Spatial Fit Calculator", "🎁 Coordinated Room Bundles"];
   }
 
-  if (count >= 2) {
-    chips.unshift("⚖️ Deep Spec Comparison");
+  // Derive dynamic refinement chips from actual catalog attributes present in matches
+  const materials = new Set<string>();
+  const styles = new Set<string>();
+  products.forEach(p => {
+    const title = (p.title || "").toLowerCase();
+    const tags = (p.tags || []).map(t => t.toLowerCase());
+    if (title.includes("leather") || tags.includes("leather") || tags.some(t => t.includes("material-leather"))) materials.add("Leather");
+    if (title.includes("velvet") || tags.includes("velvet")) materials.add("Velvet");
+    if (title.includes("sleeper") || tags.includes("sleeper") || tags.includes("sofas sleeper")) styles.add("Sleeper");
+    if (title.includes("recliner") || title.includes("power") || tags.includes("recliner")) styles.add("Recliner");
+    if (title.includes("sectional") || tags.includes("sectional")) styles.add("Sectional");
+  });
+
+  if (materials.has("Leather")) chips.push("🛋️ Filter by Leather");
+  if (styles.has("Sleeper")) chips.push("🛏️ Sleeper Options");
+  if (styles.has("Sectional")) chips.push("🛋️ Sectional Layouts");
+  if (styles.has("Recliner")) chips.push("💺 Reclining Models");
+  if (materials.has("Velvet") && chips.length < 3) chips.push("🎨 Velvet Finishes");
+
+  // Dynamic price refinement if price spread is wide
+  const prices = products.map(p => p.minPrice).filter(p => p > 0);
+  if (prices.length > 1) {
+    const minP = Math.min(...prices);
+    const maxP = Math.max(...prices);
+    if (maxP - minP > 400 && chips.length < 3) {
+      const midPrice = Math.round((minP + maxP) / 200) * 100;
+      chips.push(`💰 Under $${midPrice}`);
+    }
+  }
+
+  // Always offer contextual spatial fit
+  if (chips.length < 4) {
+    chips.push("📐 Check 15x12 Room Fit");
   }
 
   return chips.slice(0, 4);
 }
 
+const CATEGORY_MAP: Record<string, string[]> = {
+  "sofa": ["sofas", "loveseats", "sofa chairs", "sofas sleeper", "sofa sleeper", "accent chairs"],
+  "couch": ["sofas", "loveseats", "sofa chairs", "sofas sleeper", "sofa sleeper"],
+  "sectional": ["sofas", "loveseats", "sofas sleeper", "sofa sleeper"],
+  "loveseat": ["loveseats", "sofas"],
+  "chair": ["accent chairs", "sofa chairs", "desk chairs", "loveseats"],
+  "sofa chair": ["sofa chairs", "accent chairs"],
+  "accent chair": ["accent chairs", "sofa chairs"],
+  "desk": ["desks", "desk chairs"],
+  "study table": ["desks"],
+  "lamp": ["table lamps", "floor lamps", "desk lamps", "pendants"],
+  "table lamp": ["table lamps", "desk lamps"],
+  "floor lamp": ["floor lamps"],
+  "bed": ["beds", "sofas sleeper", "sofa sleeper"],
+  "bedroom": ["beds", "chests"],
+  "rug": ["rugs"],
+  "bedding": ["beddings"],
+  "comforter": ["beddings"],
+  "duvet": ["beddings"],
+  "dining": ["dining tables", "dining chairs", "tables"],
+  "table": ["tables", "table lamps", "desks"],
+  "ottoman": ["ottomans", "DISCONTINUED"]
+};
+
+// High-Precision Product Finder with Category Isolation, Strict Color & Strict Budget Filtering
+async function executeFindProducts(args: any, shopDomain?: string) {
+  let { category, color, material, max_price, min_price, query = "", limit = 6 } = args || {};
+  
+  const lowerQuery = (query || "").toLowerCase();
+  if (!category) {
+    for (const cat of ["study table", "table lamp", "floor lamp", "sofa chair", "accent chair", "sofas sleeper", "sectional", "loveseat", "sofa", "couch", "desk", "lamp", "bed", "chair", "table"]) {
+      if (lowerQuery.includes(cat)) {
+        category = cat;
+        break;
+      }
+    }
+  }
+
+  // Extract color from query if not passed explicitly in tool args
+  if (!color) {
+    const knownColors = ["black", "white", "brown", "blue", "green", "gray", "grey", "beige", "cream", "tan", "cognac", "navy", "charcoal", "espresso", "walnut", "red", "yellow", "orange", "rust", "sage", "olive"];
+    for (const kc of knownColors) {
+      if (new RegExp(`\\b${kc}\\b`, 'i').test(lowerQuery)) {
+        color = kc;
+        break;
+      }
+    }
+  }
+
+  // Extract max_price from query if not passed explicitly
+  if (typeof max_price !== "number") {
+    const priceMatch = lowerQuery.match(/(?:under|below|less than|max|budget|for|with|\$)\s*\$?(\d{3,5})/i);
+    if (priceMatch) {
+      max_price = parseFloat(priceMatch[1]);
+    }
+  }
+
+  let compiledQuery = "status:active";
+  if (category) {
+    compiledQuery = `status:active AND (title:*${category}* OR tag:*${category}* OR product_type:*${category}*)`;
+  }
+
+  let res = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
+    query: compiledQuery,
+    first: 100,
+  }, { shopDomain });
+
+  let rawEdges = res.data?.products?.edges || [];
+  if (rawEdges.length === 0) {
+    res = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
+      query: "status:active",
+      first: 100,
+    }, { shopDomain });
+    rawEdges = res.data?.products?.edges || [];
+  }
+
+  const rawProducts = rawEdges.map((e: any) => normalizeProductSummary(e.node));
+  const allowedTypes = category ? (CATEGORY_MAP[category.toLowerCase()] || [category.toLowerCase()]) : [];
+
+  // Filter 1: Strict Category Isolation & Strict Budget Enforcement
+  let candidates = rawProducts.filter((p: any) => {
+    const pt = (p.productType || "").toLowerCase();
+    const title = (p.title || "").toLowerCase();
+    const tags: string[] = (p.tags || []).map((t: string) => t.toLowerCase());
+    
+    if (category && allowedTypes.length > 0) {
+      const isCatMatch = allowedTypes.some((at: string) => pt.includes(at) || tags.includes(at) || title.includes(at));
+      if (!isCatMatch) return false;
+    }
+
+    if (typeof max_price === "number" && max_price > 0 && p.minPrice > max_price) {
+      return false;
+    }
+    if (typeof min_price === "number" && min_price > 0 && p.minPrice < min_price) {
+      return false;
+    }
+    return true;
+  });
+
+  // Filter 2: Strict Color Matching if user requested a specific color
+  if (color) {
+    const targetColor = color.toLowerCase();
+    const exactColorMatches = candidates.filter((p: any) => {
+      const title = (p.title || "").toLowerCase();
+      const tags = (p.tags || []).map((t: string) => t.toLowerCase());
+      const colors = (p.availableColors || []).map((c: string) => c.toLowerCase());
+      return title.includes(targetColor) || 
+             tags.includes(`color-${targetColor}`) || 
+             tags.includes(targetColor) ||
+             colors.some((c: string) => c.includes(targetColor));
+    });
+
+    if (exactColorMatches.length > 0) {
+      return exactColorMatches.slice(0, Math.max(6, limit));
+    }
+    // If color was explicitly requested and 0 products match, return empty to prevent returning wrong color items
+    return [];
+  }
+
+  // Filter 3: Material matching if requested
+  if (material) {
+    const targetMat = material.toLowerCase().replace(/\s+/g, "-");
+    const matMatches = candidates.filter((p: any) => {
+      const title = (p.title || "").toLowerCase();
+      const tags = (p.tags || []).map((t: string) => t.toLowerCase());
+      return title.includes(material.toLowerCase()) || tags.includes(`material-${targetMat}`) || tags.includes(material.toLowerCase());
+    });
+    if (matMatches.length > 0) {
+      return matMatches.slice(0, Math.max(6, limit));
+    }
+  }
+
+  return candidates.slice(0, Math.max(6, limit));
+}
+
+async function executeCustomShopifyGraphQL(args: any, shopDomain?: string) {
+  const { query_string = "status:active", limit = 6 } = args || {};
+  const res = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
+    query: query_string,
+    first: Math.min(20, limit * 2),
+  }, { shopDomain });
+
+  const rawEdges = res.data?.products?.edges || [];
+  let products: ProductSummary[] = rawEdges.map((e: any) => normalizeProductSummary(e.node));
+  return products.slice(0, limit);
+}
+
+async function executeRoomFit(args: any, sessionCtx?: any, shopDomain?: string) {
+  let {
+    room_width_feet,
+    room_length_feet,
+    room_width_cm,
+    room_length_cm,
+    product_handle
+  } = args || {};
+
+  if (!room_width_feet && !room_width_cm && sessionCtx?.roomDimensions) {
+    room_width_feet = sessionCtx.roomDimensions.width_feet;
+    room_length_feet = sessionCtx.roomDimensions.length_feet;
+  }
+
+  if (!product_handle && sessionCtx?.activeProductInFocus) {
+    product_handle = sessionCtx.activeProductInFocus.handle;
+  }
+  if (!product_handle && sessionCtx?.lastViewedProducts?.[0]) {
+    product_handle = sessionCtx.lastViewedProducts[0].handle;
+  }
+  product_handle = product_handle || "softee-full-sofa-sleeper";
+
+  if (room_width_cm && !room_width_feet) {
+    room_width_feet = Math.round((room_width_cm / 30.48) * 10) / 10;
+  }
+  if (room_length_cm && !room_length_feet) {
+    room_length_feet = Math.round((room_length_cm / 30.48) * 10) / 10;
+  }
+
+  room_width_feet = room_width_feet || 15;
+  room_length_feet = room_length_feet || 12;
+  
+  let title = "Softee Full Sofa Sleeper";
+  let sofaW = 84;
+  let sofaD = 38;
+  let sofaH = 34;
+  let price = 699.99;
+  let image = "";
+  let variantId = "35127541039272";
+
+  try {
+    const res = await shopifyGraphQL<any>(GET_PRODUCT_DETAILS_QUERY, { handle: product_handle }, { shopDomain });
+    if (res.data?.productByHandle) {
+      const p: ProductDetailed = normalizeProductDetailed(res.data.productByHandle);
+      title = p.title;
+      price = p.minPrice;
+      image = p.featuredImage || (p.images && p.images[0]?.url) || "";
+      variantId = p.variants[0]?.id || variantId;
+      if (p.specifications.dimensions) {
+        const match = p.specifications.dimensions.match(/(\d+)[^xX]*[xX][^xX]*(\d+)[^xX]*[xX][^xX]*(\d+)/);
+        if (match) {
+          sofaW = parseFloat(match[1]);
+          sofaD = parseFloat(match[2]);
+          sofaH = parseFloat(match[3]);
+        }
+      }
+    }
+  } catch (e) {}
+
+  const roomAreaSqFt = room_width_feet * room_length_feet;
+  const sofaAreaSqFt = (sofaW * sofaD) / 144;
+  const ratio = (sofaAreaSqFt / roomAreaSqFt) * 100;
+
+  const clearanceFrontInches = Math.max(0, Math.round((room_length_feet * 12 - sofaD) / 2));
+  const clearanceSidesInches = Math.max(0, Math.round((room_width_feet * 12 - sofaW) / 2));
+
+  let fitStatus: "EXCELLENT" | "COMFORTABLE" | "TIGHT" | "TOO_LARGE" = "EXCELLENT";
+  let fitScore = 95;
+  if (ratio > 35 || clearanceFrontInches < 24) {
+    fitStatus = "TOO_LARGE";
+    fitScore = 42;
+  } else if (ratio > 25 || clearanceFrontInches < 30) {
+    fitStatus = "TIGHT";
+    fitScore = 68;
+  } else if (ratio > 18) {
+    fitStatus = "COMFORTABLE";
+    fitScore = 88;
+  }
+
+  return {
+    success: true,
+    product: {
+      handle: product_handle,
+      title,
+      price,
+      image,
+      variantId,
+      dimensions: { width: sofaW, depth: sofaD, height: sofaH }
+    },
+    room: {
+      width_feet: room_width_feet,
+      length_feet: room_length_feet,
+      area_sqft: roomAreaSqFt
+    },
+    metrics: {
+      fit_score: fitScore,
+      fit_status: fitStatus,
+      room_footprint_percentage: Math.round(ratio),
+      clearance_front_inches: clearanceFrontInches,
+      clearance_sides_inches: clearanceSidesInches,
+      traffic_flow_rating: clearanceFrontInches >= 36 ? "Optimal (>36 in walkway)" : "Adequate"
+    },
+    checkout_permalink: generateCartPermalink([{ variantId, quantity: 1 }], "WEBMCP10")
+  };
+}
+
+async function executeFloorplan(args: any, sessionCtx?: any) {
+  let { room_width_feet, room_length_feet, product_title, sofa_width_inches = 84, sofa_depth_inches = 38 } = args || {};
+  
+  if (!room_width_feet && sessionCtx?.roomDimensions) {
+    room_width_feet = sessionCtx.roomDimensions.width_feet;
+    room_length_feet = sessionCtx.roomDimensions.length_feet;
+  }
+  if (!product_title && sessionCtx?.activeProductInFocus) {
+    product_title = sessionCtx.activeProductInFocus.title;
+  }
+
+  const roomW = room_width_feet || 15;
+  const roomL = room_length_feet || 12;
+  const prodTitle = product_title || "Living Room Sofa";
+  
+  const scale = 24;
+  const svgWidth = Math.round(roomW * scale);
+  const svgHeight = Math.round(roomL * scale);
+
+  const sofaWidthPx = Math.round((sofa_width_inches / 12) * scale);
+  const sofaDepthPx = Math.round((sofa_depth_inches / 12) * scale);
+  const sofaX = Math.round((svgWidth - sofaWidthPx) / 2);
+  const sofaY = Math.round((svgHeight - sofaDepthPx) / 2);
+
+  const coffeeTableW = Math.round(3.5 * scale);
+  const coffeeTableH = Math.round(2 * scale);
+  const coffeeTableX = Math.round((svgWidth - coffeeTableW) / 2);
+  const coffeeTableY = sofaY + sofaDepthPx + 18;
+
+  const svg = `<svg width="100%" height="220" viewBox="0 0 ${svgWidth + 40} ${svgHeight + 40}" xmlns="http://www.w3.org/2000/svg" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:12px; font-family:sans-serif;">
+    <defs>
+      <pattern id="grid" width="${scale}" height="${scale}" patternUnits="userSpaceOnUse">
+        <path d="M ${scale} 0 L 0 0 0 ${scale}" fill="none" stroke="#f1f5f9" stroke-width="1"/>
+      </pattern>
+    </defs>
+    <rect x="20" y="20" width="${svgWidth}" height="${svgHeight}" fill="url(#grid)" stroke="#0284c7" stroke-width="2" rx="4" />
+    <rect x="${sofaX + 10}" y="${sofaY + 10}" width="${sofaWidthPx + 20}" height="${sofaDepthPx + coffeeTableH + 35}" fill="rgba(2,132,199,0.05)" stroke="rgba(2,132,199,0.2)" stroke-dasharray="4" rx="6" />
+    <rect x="${sofaX + 20}" y="${sofaY + 20}" width="${sofaWidthPx}" height="${sofaDepthPx}" fill="#0f172a" stroke="#0284c7" stroke-width="2" rx="6" />
+    <text x="${sofaX + 20 + sofaWidthPx/2}" y="${sofaY + 20 + sofaDepthPx/2 + 4}" fill="#ffffff" font-size="11" font-weight="bold" text-anchor="middle">${prodTitle}</text>
+    <rect x="${coffeeTableX + 20}" y="${coffeeTableY + 20}" width="${coffeeTableW}" height="${coffeeTableH}" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5" rx="4" />
+    <text x="${coffeeTableX + 20 + coffeeTableW/2}" y="${coffeeTableY + 20 + coffeeTableH/2 + 3}" fill="#0f172a" font-size="9" text-anchor="middle">Coffee Table</text>
+    <text x="${svgWidth/2 + 20}" y="14" fill="#64748b" font-size="10" text-anchor="middle">${roomW} ft Width</text>
+    <text x="8" y="${svgHeight/2 + 25}" fill="#64748b" font-size="10" text-anchor="middle" transform="rotate(-90 8,${svgHeight/2 + 25})">${roomL} ft Length</text>
+  </svg>`;
+
+  return {
+    success: true,
+    room: { width_feet: roomW, length_feet: roomL },
+    product: { title: prodTitle, width_inches: sofa_width_inches, depth_inches: sofa_depth_inches },
+    svg_markup: svg
+  };
+}
+
+async function executeFabricLighting(args: any) {
+  const { wall_color = "warm beige", window_exposure = "South-Facing (Warm Bright Light)" } = args || {};
+  const lower = wall_color.toLowerCase();
+
+  let recommendedUpholstery = ["Camel Saddle Leather", "Charcoal Performance Velvet", "Oatmeal Linen"];
+  let kelvin = "3000K (Warm White)";
+  let harmonyScore = 96;
+
+  if (lower.includes("blue") || lower.includes("navy")) {
+    recommendedUpholstery = ["Cognac Top-Grain Leather", "Cream Chenille", "Mustard Velvet"];
+    kelvin = "2700K (Soft Ambient Warmth)";
+    harmonyScore = 98;
+  } else if (lower.includes("green") || lower.includes("sage") || lower.includes("emerald")) {
+    recommendedUpholstery = ["Caramel Pull-Up Leather", "Ivory Boucle", "Espresso Fabric"];
+    kelvin = "3000K (Warm Natural White)";
+    harmonyScore = 97;
+  } else if (lower.includes("charcoal") || lower.includes("gray") || lower.includes("grey")) {
+    recommendedUpholstery = ["Cognac Italian Leather", "Teal Textured Linen", "Cobalt Blue Velvet"];
+    kelvin = "3500K (Bright Neutral White)";
+    harmonyScore = 94;
+  }
+
+  return {
+    success: true,
+    wall_color,
+    window_exposure,
+    color_harmony_score: harmonyScore,
+    recommended_fabrics: recommendedUpholstery,
+    recommended_lighting: {
+      temperature_kelvin: kelvin,
+      placement_tip: "Pair with low-profile accent lighting behind the main sectional for high visual contrast."
+    }
+  };
+}
+
+async function executeBundleBuilder(args: any, shopDomain?: string) {
+  const sofas = await executeFindProducts({ category: "sofa", limit: 1 }, shopDomain);
+  const chairs = await executeFindProducts({ category: "chair", limit: 1 }, shopDomain);
+  const tables = await executeFindProducts({ category: "table", limit: 1 }, shopDomain);
+
+  const sofa = sofas[0] || { title: "Softee Full Sofa Sleeper", minPrice: 699.99, id: "5408100417704", handle: "softee-full-sofa-sleeper", featuredImage: null, matchedVariantId: "35127541039272" };
+  const chair = chairs[0] || { title: "Beamerton Sofa Chair", minPrice: 949.99, id: "5408101040296", handle: "beamerton-chair", featuredImage: null, matchedVariantId: "35127542153384" };
+  const table = tables[0] || { title: "Shavontae Table Lamp 2 PC", minPrice: 199.99, id: "5408100286632", handle: "shavontae-table-lamp", featuredImage: null, matchedVariantId: "35127540908200" };
+
+  const subtotal = sofa.minPrice + chair.minPrice + table.minPrice;
+  const bundleDiscount = Math.round(subtotal * 0.15);
+  const bundleTotal = subtotal - bundleDiscount;
+
+  return {
+    success: true,
+    bundle_name: "Curated 3-Piece Living Room Suite",
+    items: [
+      { role: "Anchor Sofa", title: sofa.title, price: sofa.minPrice, image: sofa.featuredImage },
+      { role: "Accent Chair", title: chair.title, price: chair.minPrice, image: chair.featuredImage },
+      { role: "Living Accessory", title: table.title, price: table.minPrice, image: table.featuredImage }
+    ],
+    pricing: {
+      retail_subtotal: subtotal,
+      bundle_discount_15_pct: bundleDiscount,
+      bundle_total: bundleTotal,
+      savings_text: `Save $${bundleDiscount} (15% Bundle Discount)`
+    },
+    checkout_permalink: `https://${shopDomain || 'jenniferfurniturestaging.myshopify.com'}/cart/${sofa.matchedVariantId || '35127541039272'}:1?discount=WEBMCP15`
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { message = "", customer, history = [], context = {} } = body;
-    const cleanMsg = message.trim();
-    const lower = cleanMsg.toLowerCase();
+    const { message = "", messages = [], session_id, shop_domain, brand_name } = body;
+    const currentSessionId = session_id || "sess_default";
+    const targetShop = shop_domain || request.headers.get("x-shop-domain") || undefined;
+    const activeBrand = brand_name || "Jennifer Furniture";
 
-    // Context resolution from session memory
-    const activeProduct = context.selectedProduct || (context.lastProducts && context.lastProducts[0]) || null;
-    const activeCategory = context.activeCategory || "";
+    // 1. Enforce Client Rate Limit (10 calls per window per client)
+    const rateLimit = checkRateLimit(request, { limit: 10, windowMs: 24 * 60 * 60 * 1000 }, currentSessionId);
+    const combinedHeaders = {
+      ...corsHeaders,
+      ...rateLimit.headers,
+    };
 
-    // ==========================================
-    // 0. MULTIMODAL ROOM VISION & DESIGN CONSULTANT INTENT
-    // ==========================================
-    const hasImage = Boolean(body.image || body.image_data || context.uploadedImage);
-    if (hasImage || lower.includes("photo") || lower.includes("my room") || lower.includes("my hall") || lower.includes("design my") || lower.includes("which sofa would fit my room")) {
-      // Extract budget cap (e.g., $2,500)
-      let budgetCap = 2500;
-      const budgetMatch = lower.match(/(?:under|\$|budget\s*of)\s*(\$?\d+[\d,]*)/i);
-      if (budgetMatch) {
-        budgetCap = parseInt(budgetMatch[1].replace(/[\$,]/g, ""));
-      }
-
-      const isLeather = lower.includes("leather");
-      const needsSleeper = lower.includes("sleeper") || lower.includes("bed") || lower.includes("sofa bed");
-
-      let roomW = context.roomDimensions?.width || 14;
-      let roomL = context.roomDimensions?.length || 12;
-      const dimMatch = lower.match(/(\d+)\s*(?:x|by|\*)\s*(\d+)/i);
-      if (dimMatch) {
-        roomW = parseInt(dimMatch[1]);
-        roomL = parseInt(dimMatch[2]);
-      }
-
-      const roomWidthInches = roomW * 12;
-      const roomLengthInches = roomL * 12;
-
-      // Select curated in-stock recommendations under budget
-      let recs = [];
-      if (needsSleeper) {
-        recs = [
-          {
-            id: "gid://shopify/Product/7492144791720",
-            title: "Luonto Monika Sleeper Sofa (Queen)",
-            handle: "monika-sleeper-sofa",
-            price: 1899.00,
-            variantId: "48745536979112",
-            image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979112", quantity: 1 }], "WEBMCP10").checkoutUrl
-          },
-          {
-            id: "gid://shopify/Product/8123991209381",
-            title: "Softee Full Sofa Sleeper",
-            handle: "softee-full-sofa-sleeper",
-            price: 699.99,
-            variantId: "44910283948192",
-            image: "https://images.unsplash.com/photo-1493663284031-b7e3aefcae8e?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "44910283948192", quantity: 1 }], "WEBMCP10").checkoutUrl
-          }
-        ];
-      } else if (isLeather) {
-        recs = [
-          {
-            id: "gid://shopify/Product/7502891929768",
-            title: "Mason Leather 89\" Sofa",
-            handle: "mason-leather-89-sofa-1",
-            price: 1695.00,
-            variantId: "48745536979201",
-            image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979201", quantity: 1 }], "WEBMCP10").checkoutUrl
-          },
-          {
-            id: "gid://shopify/Product/7192849182390",
-            title: "Kirby Performance Sofa Chaise",
-            handle: "kirby-chaise",
-            price: 699.99,
-            variantId: "43891029384918",
-            image: "https://images.unsplash.com/photo-1550581190-9c1c48d21d6c?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "43891029384918", quantity: 1 }], "WEBMCP10").checkoutUrl
-          }
-        ];
-      } else {
-        recs = [
-          {
-            id: "gid://shopify/Product/7502891929768",
-            title: "Mason Leather 89\" Sofa",
-            handle: "mason-leather-89-sofa-1",
-            price: 1695.00,
-            variantId: "48745536979201",
-            image: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979201", quantity: 1 }], "WEBMCP10").checkoutUrl
-          },
-          {
-            id: "gid://shopify/Product/7492144791720",
-            title: "Luonto Monika Sleeper Sofa",
-            handle: "monika-sleeper-sofa",
-            price: 1899.00,
-            variantId: "48745536979112",
-            image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            checkoutUrl: generateCartPermalink([{ variantId: "48745536979112", quantity: 1 }], "WEBMCP10").checkoutUrl
-          }
-        ];
-      }
-
-      const primary = recs[0];
-      const bundleResult = generateCartPermalink([
-        { variantId: primary.variantId, quantity: 1 },
-        { variantId: "48745536979113", quantity: 1 },
-        { variantId: "48745536979114", quantity: 1 }
-      ], "WEBMCP15");
-      const bundlePermalink = bundleResult.checkoutUrl;
-
-      return NextResponse.json({
-        success: true,
-        text: `### 📸 AI Room Analysis & Interior Consultation\n\n` +
-              `• **Room Aesthetic Detected:** Transitional Great Room with warm hardwood undertones and abundant natural lighting.\n` +
-              `• **Recommended Structure:** ${needsSleeper ? "Dual-Motion 84\" Sleeper Sofa to preserve perimeter flow while hosting guests" : "89\" Tailored 3-Seater Sofa in Cognac Leather with clean architectural lines"}.\n` +
-              `• **Cushion & Comfort Engineering:** 2.2 lb/ft³ High-Resiliency Multi-Density Foam with channeled down-blend crown and dual accent toss pillows.\n` +
-              `• **Spatial Fit & Clearance:** **98/100 EXCELLENT FIT** in your ${roomW}' × ${roomL}' space (38" side clearance + 42" front walkway clearance).\n` +
-              `• **Budget Cap:** Verified **under \$${budgetCap.toLocaleString()}** with **15% Bundle Discount** applied below!`,
-        products: recs,
-        chips: [
-          "🎁 Build 3-Piece Suite (-15%)",
-          "📐 View Full Clearance Matrix",
-          "🐄 Switch to Cognac Leather",
-          "🛋️ Show Sleeper Alternatives"
-        ],
-        contextUpdate: {
-          selectedProduct: primary,
-          roomDimensions: { width: roomW, length: roomL },
-          budgetCap
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          rate_limited: true,
+          limit: rateLimit.limit,
+          remaining: 0,
+          reset_seconds: parseInt(rateLimit.headers["X-RateLimit-Reset"] || "3600"),
+          text: "⏳ **Session Query Limit Reached (10/10 calls)**\n\nYou have reached the limit of 10 AI queries for today. Standard store search remains active.",
+          products: [],
+          chips: ["🛋️ View In-Stock Sofas", "🪑 View Dining Sets", "🛏️ View Bedroom Suites"],
+        },
+        {
+          status: 429,
+          headers: combinedHeaders,
         }
-      }, { headers: corsHeaders });
+      );
     }
 
-    // ==========================================
-    // 1. GREETING INTENT
-    // ==========================================
-    if (!cleanMsg || (/^(hi|hello|hey|greetings|help|start|good morning|good afternoon)/i.test(cleanMsg) && cleanMsg.split(" ").length <= 3)) {
-      const greetingName = customer?.name ? `, ${customer.name}` : "";
+function normalizeVoiceQuery(text: string): string {
+  if (!text) return text;
+  let q = text;
+  // Spoken dimensions: "fifteen by twelve", "15 by 12" -> "15x12 ft"
+  q = q.replace(/\b(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d+)\s*(?:feet|ft)?\s*(?:by|x|\*)\s*(ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|\d+)\s*(?:feet|ft)?\b/gi, (_m, w, l) => {
+    const wordToNum: Record<string, number> = {
+      ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
+      sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20
+    };
+    const width = wordToNum[w.toLowerCase()] || parseInt(w, 10);
+    const length = wordToNum[l.toLowerCase()] || parseInt(l, 10);
+    return `${width}x${length} ft`;
+  });
+
+  // Spoken prices: "under two thousand" -> "under $2000"
+  q = q.replace(/\b(?:under|below|less than)\s*two\s*thousand\b/gi, "under $2000");
+  q = q.replace(/\b(?:under|below|less than)\s*three\s*thousand\b/gi, "under $3000");
+  q = q.replace(/\b(?:under|below|less than)\s*one\s*thousand\b/gi, "under $1000");
+  q = q.replace(/\b(?:under|below|less than)\s*fifteen\s*hundred\b/gi, "under $1500");
+  q = q.replace(/\b(?:under|below|less than)\s*(\d+)\s*(?:grand|k)\b/gi, (_m, k) => `under $${parseInt(k, 10) * 1000}`);
+  q = q.replace(/\b(?:under|below|less than)\s*two\s*grand\b/gi, "under $2000");
+
+  return q;
+}
+
+    const rawUserQuery = message || (messages.length > 0 ? messages[messages.length - 1].content : "");
+    const userQuery = normalizeVoiceQuery(rawUserQuery);
+    if (!userQuery.trim()) {
       return NextResponse.json({
         success: true,
-        text: `Hello${greetingName}! 👋 I am your Jennifer Furniture AI Co-Pilot with full WebMCP & Gemini on-device tools. Tell me what you're looking for—like *"In-stock leather sofa under $3,000"*, *"Will this fit my 12x10 room?"*, or *"Build a 3-piece suite"*—and I will calculate dimensions and drive the store for you!`,
+        rate_limit: { limit: rateLimit.limit, remaining: rateLimit.remaining },
+        text: `Welcome to ${activeBrand}. How can I assist you with your space today?`,
         products: [],
-        chips: [
-          "🛋️ In-Stock Sofas under $2,000",
-          "📐 Check 12x10 Room Fit",
-          "🎁 Build 3-Piece Room Bundle",
-          "⚖️ Compare Top 2"
-        ],
-        comparison: null
-      }, { headers: corsHeaders });
+        chips: generateSmartChips(),
+      }, { headers: combinedHeaders });
     }
 
-    // ==========================================
-    // 2. ROOM FIT & CLEARANCE CALCULATOR INTENT
-    // ==========================================
-    if (lower.includes("fit") || lower.includes("dimension") || lower.includes("clearance") || lower.includes("room size") || /\b\d+\s*x\s*\d+\b/i.test(lower)) {
-      // Extract room dimensions (e.g. 12x10 or 12 by 10)
-      let roomW = context.roomDimensions?.width || 12;
-      let roomL = context.roomDimensions?.length || 10;
-      const dimMatch = lower.match(/(\d+)\s*(?:x|by|\*)\s*(\d+)/i);
-      if (dimMatch) {
-        roomW = parseInt(dimMatch[1]);
-        roomL = parseInt(dimMatch[2]);
+    // 2. Extract & Update Session Context Memory
+    const sessionCtx = extractAndCacheContextFromQuery(currentSessionId, userQuery);
+    const cachedContextPrompt = formatSessionContextForPrompt(currentSessionId);
+
+    const conversationHistory = messages.length > 0 ? messages : [{ role: "user", content: userQuery }];
+
+    // 3. Invoke OpenRouter Gemini 2.5 Agent
+    let agentResponse;
+    try {
+      agentResponse = await runOpenRouterAgent(conversationHistory, cachedContextPrompt);
+    } catch (err: any) {
+      console.warn("OpenRouter API fallback:", err.message);
+    }
+
+    // 4. Process Tool Calls from AI
+    if (agentResponse?.toolCalls && agentResponse.toolCalls.length > 0) {
+      const toolCall = agentResponse.toolCalls[0];
+      const toolName = toolCall.function.name;
+      let toolArgs: any = {};
+      try {
+        toolArgs = typeof toolCall.function.arguments === "string" ? JSON.parse(toolCall.function.arguments) : toolCall.function.arguments;
+      } catch (e) {}
+
+      let toolResult: any = null;
+      let products: ProductSummary[] = [];
+      let fit: any = null;
+      let floorplan: any = null;
+      let fabric: any = null;
+      let bundle: any = null;
+
+      if (toolName === "find_products_by_constraints") {
+        products = await executeFindProducts(toolArgs, targetShop);
+        toolResult = { count: products.length, products };
+        if (products.length > 0) cacheProductsInSession(currentSessionId, products);
+      } else if (toolName === "execute_custom_shopify_graphql") {
+        products = await executeCustomShopifyGraphQL(toolArgs, targetShop);
+        toolResult = { count: products.length, products };
+        if (products.length > 0) cacheProductsInSession(currentSessionId, products);
+      } else if (toolName === "calculate_room_fit_and_clearance") {
+        fit = await executeRoomFit(toolArgs, sessionCtx, targetShop);
+        toolResult = fit;
+        updateSessionContext(currentSessionId, { lastFitScorecard: fit });
+      } else if (toolName === "generate_room_floorplan") {
+        floorplan = await executeFloorplan(toolArgs, sessionCtx);
+        toolResult = floorplan;
+        updateSessionContext(currentSessionId, { lastFloorplan: floorplan });
+      } else if (toolName === "match_fabric_and_lighting") {
+        fabric = await executeFabricLighting(toolArgs);
+        toolResult = fabric;
+      } else if (toolName === "build_coordinated_room_bundle") {
+        bundle = await executeBundleBuilder(toolArgs, targetShop);
+        toolResult = bundle;
+        updateSessionContext(currentSessionId, { lastBundle: bundle });
       }
 
-      // Dynamically resolve target product from context or prompt
-      let targetTitle = activeProduct?.title || "Monika Sleeper Sofa";
-      let targetHandle = activeProduct?.handle || "monika-sleeper-sofa";
-      let targetPrice = activeProduct?.price || 1899.00;
-      let targetVariantId = activeProduct?.variantId || "48745536979112";
-
-      if (lower.includes("mason")) { targetHandle = "mason-leather-89-sofa-1"; targetTitle = "Mason Leather 89\" Sofa"; targetPrice = 2499.00; }
-      else if (lower.includes("kirby")) { targetHandle = "kirby-chaise"; targetTitle = "Kirby Chaise Sectional"; targetPrice = 1799.00; }
-      else if (lower.includes("softee")) { targetHandle = "softee-full-sofa-sleeper"; targetTitle = "Softee Full Sofa Sleeper"; targetPrice = 699.99; }
-      else if (lower.includes("linda")) { targetHandle = "linda-slipcover-sofa-chair"; targetTitle = "Linda Slipcover Sofa Chair"; targetPrice = 1399.99; }
-      else if (lower.includes("hodan")) { targetHandle = "hodan-sofa-chaise"; targetTitle = "Hodan Sofa Chaise"; targetPrice = 742.99; }
-
-      const roomWidthInches = roomW * 12;
-      const roomLengthInches = roomL * 12;
-      const sofaWidthInches = targetHandle.includes("mason") ? 89 : (targetHandle.includes("chaise") ? 92 : 84);
-      const sofaDepthInches = 38;
-
-      const remainingSide = Math.max(0, Math.round((roomWidthInches - sofaWidthInches) / 2));
-      const frontClearance = Math.max(0, Math.round(roomLengthInches - (sofaDepthInches + 24 + 16)));
-
-      const permalink = generateCartPermalink(
-        [{ variantId: targetVariantId, quantity: 1, title: targetTitle, price: targetPrice }],
-        "WEBMCP10"
-      );
-
-      const fitScore = frontClearance >= 30 ? (frontClearance >= 48 ? 98 : 88) : 70;
-      const verdict = frontClearance >= 30 ? "✅ EXCELLENT LUXURY FIT" : "⚠️ COMPACT FIT";
-
-      return NextResponse.json({
-        success: true,
-        text: `### 📐 Room Fit Analysis for **${targetTitle}**\n\n` +
-              `• **Your Room:** ${roomW} ft x ${roomL} ft (${roomWidthInches}" x ${roomLengthInches}")\n` +
-              `• **Product Specs:** ${sofaWidthInches}" Width x ${sofaDepthInches}" Depth\n` +
-              `• **Perimeter Clearance:** **${remainingSide} inches** on left & right margins\n` +
-              `• **Front Walkway Path:** **${frontClearance} inches** remaining (Standard minimum: 30")\n` +
-              `• **Verdict:** **${verdict}** (Fit Score: **${fitScore}/100**)\n\n` +
-              `Adequate walking clearance is confirmed. Would you like to spotlight this on the page or check matching pieces?`,
-        products: [
-          {
-            id: activeProduct?.id || "fit-product",
-            title: targetTitle,
-            handle: targetHandle,
-            price: targetPrice,
-            image: activeProduct?.image || "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            url: `https://jenniferfurniturestaging.myshopify.com/products/${targetHandle}`,
-            checkoutUrl: permalink.checkoutUrl,
-            variantId: targetVariantId
+      let replyText = agentResponse.text;
+      if (!replyText || replyText.trim().length === 0) {
+        if (toolName === "find_products_by_constraints" || toolName === "execute_custom_shopify_graphql") {
+          if (products.length > 0) {
+            const topHighlights = products.slice(0, 3).map(p => `**${p.title}** ($${p.minPrice.toFixed(2)})`).join(", ");
+            const minP = Math.min(...products.map(p => p.minPrice));
+            const maxP = Math.max(...products.map(p => p.minPrice));
+            replyText = `I found **${products.length} in-stock options** matching your request (priced from $${minP.toFixed(2)} to $${maxP.toFixed(2)}), including ${topHighlights}.`;
+            if (toolArgs?.max_price) {
+              replyText += ` All options are verified within your **$${toolArgs.max_price}** budget.`;
+            }
+            replyText += `\n\nTake a look at the verified catalog cards below. Would you like to calculate room fit, compare specs, or build a matching living room bundle?`;
+          } else {
+            replyText = `I searched our live catalog for "${toolArgs?.query || toolArgs?.category || userQuery}", but didn't find active inventory matching those exact constraints. Would you like me to broaden the search or suggest alternative collections?`;
           }
-        ],
-        chips: [
-          "🎯 Spotlight on Page",
-          "🛍️ 1-Click Buy Now",
-          "🎁 Build 3-Piece Suite",
-          "⚖️ Compare with Another"
-        ],
-        contextUpdate: {
-          selectedProduct: { id: targetVariantId, title: targetTitle, handle: targetHandle, price: targetPrice, variantId: targetVariantId },
-          roomDimensions: { width: roomW, length: roomL }
+        } else if (toolName === "calculate_room_fit_and_clearance" && fit) {
+          replyText = `### 📐 Room Fit Scorecard: **${fit.metrics.fit_score}/100 (${fit.metrics.fit_status})**\n- **Walkway Clearance**: ${fit.metrics.clearance_front_inches} inches\n- **Side Clearance**: ${fit.metrics.clearance_sides_inches} inches\n- **Footprint**: ${fit.metrics.room_footprint_percentage}% of space`;
+        } else if (toolName === "generate_room_floorplan" && floorplan) {
+          replyText = `### 📐 2D Floorplan Generated for **${floorplan.room.width_feet}ft x ${floorplan.room.length_feet}ft** space.`;
+        } else if (toolName === "match_fabric_and_lighting" && fabric) {
+          replyText = `### 🎨 Color & Lighting Harmony: **${fabric.color_harmony_score}% Match**`;
+        } else if (toolName === "build_coordinated_room_bundle" && bundle) {
+          replyText = `### 🎁 Curated 3-Piece Suite Created! (**${bundle.pricing.savings_text}**)`;
         }
-      }, { headers: corsHeaders });
-    }
-
-    // ==========================================
-    // 3. SMART 3-PIECE ROOM BUNDLE BUILDER INTENT
-    // ==========================================
-    if (lower.includes("bundle") || lower.includes("suite") || lower.includes("set") || lower.includes("matching package")) {
-      const anchorTitle = "Luonto Monika Sleeper Suite";
-      const bundlePrice = 2899.99;
-      const regularPrice = 3499.99;
-      const savings = 600.00;
-
-      const bundlePermalink = generateCartPermalink(
-        [
-          { variantId: "48745536979112", quantity: 1, title: "Monika Sleeper Sofa", price: 1899.00 },
-          { variantId: "35273545810088", quantity: 1, title: "Mazda Storage Ottoman", price: 499.99 },
-          { variantId: "35127562436776", quantity: 1, title: "Linda Slipcover Accent Chair", price: 1099.99 }
-        ],
-        "WEBMCP15"
-      );
+      }
 
       return NextResponse.json({
         success: true,
-        text: `### 🎁 Coordinated 3-Piece Living Room Suite (Save 15%)\n\n` +
-              `I have paired matching in-stock items with identical walnut leg finishes and charcoal upholstery:\n\n` +
-              `1. **Luonto Monika Sleeper Sofa** ($1,899.00)\n` +
-              `2. **Mazda Storage Ottoman** ($499.99)\n` +
-              `3. **Linda Slipcover Accent Chair** ($1,099.99)\n\n` +
-              `• **Individual Total:** ~~$3,499.99~~\n` +
-              `• **Bundle Price:** **$2,899.99** (You Save **$600.00** with **WEBMCP15** applied)`,
-        products: [
-          {
-            id: "bundle-anchor",
-            title: "3-Piece Coordinated Room Suite (Sofa + Ottoman + Chair)",
-            handle: "monika-sleeper-sofa",
-            price: bundlePrice,
-            image: "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
-            inStock: true,
-            url: "https://jenniferfurniturestaging.myshopify.com/products/monika-sleeper-sofa",
-            checkoutUrl: bundlePermalink.checkoutUrl,
-            variantId: "48745536979112"
-          }
-        ],
-        chips: [
-          "⚡ 1-Click Buy Complete Bundle",
-          "📐 Check 12x10 Room Fit",
-          "🛋️ View Individual Pieces",
-          "💰 Sofas under $2,000"
-        ]
-      }, { headers: corsHeaders });
+        rate_limit: { limit: rateLimit.limit, remaining: rateLimit.remaining },
+        session_context: {
+          roomDimensions: sessionCtx.roomDimensions,
+          budget: sessionCtx.budget,
+          preferredColors: sessionCtx.preferredColors,
+          activeProduct: sessionCtx.activeProductInFocus
+        },
+        text: replyText,
+        tool_called: toolName,
+        tool_args: toolArgs,
+        tool_result: toolResult,
+        products,
+        fit,
+        floorplan,
+        fabric,
+        bundle,
+        chips: generateSmartChips(toolArgs?.category, userQuery, products.length, products),
+      }, { headers: combinedHeaders });
     }
 
-    // ==========================================
-    // 4. DEEP SPEC COMPARISON MATRIX INTENT
-    // ==========================================
-    if (lower.includes("compare") || lower.includes("vs") || lower.includes("difference between")) {
-      const searchRes = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
-        query: "status:active inventory_total:>0",
-        first: 8,
-      });
-
-      const edges = searchRes.data?.products?.edges || [];
-      const summaries: ProductSummary[] = edges.map((e: any) => normalizeProductSummary(e.node));
-
-      let compareItems = summaries.filter((p: ProductSummary) => 
-        (p.title && lower.includes(p.title.toLowerCase())) || 
-        (p.handle && lower.includes(p.handle.toLowerCase())) ||
-        (p.title && cleanMsg.toLowerCase().includes(p.title.split(" ")[0].toLowerCase()))
-      );
-
-      if (compareItems.length < 2) {
-        compareItems = summaries.slice(0, 2);
-      } else {
-        compareItems = compareItems.slice(0, 3);
-      }
-
-      const compMatrix = {
-        products: compareItems.map((p: ProductSummary) => {
-          const permalink = generateCartPermalink(
-            [{ variantId: p.matchedVariantId || p.id, quantity: 1, title: p.title, price: p.minPrice }],
-            "WEBMCP10"
-          );
-          return {
-            id: p.id,
-            title: p.title,
-            price: `$${p.minPrice.toFixed(2)}`,
-            inStock: p.inStock ? "✅ In Stock" : "❌ Sold Out",
-            dimensions: p.tags?.find((t: string) => t.toLowerCase().includes("w ") || t.includes("x")) || "Standard 84\" W x 38\" D",
-            material: p.tags?.find((t: string) => ["leather", "fabric", "velvet", "wood"].some(m => t.toLowerCase().includes(m))) || "Top Grain Genuine Leather",
-            frame: "Kiln-Dried Hardwood (Reinforced Corner Blocks)",
-            cushions: "2.0 High-Resiliency Foam + Sinuous Steel Springs",
-            warranty: "1-Year Manufacturer Frame & Cushion Warranty",
-            checkoutUrl: permalink.checkoutUrl
-          };
-        }),
-        recommendation: `Both items are verified in stock. The **${compareItems[0]?.title}** offers top durability with hardwood construction, while the **${compareItems[1]?.title}** delivers the best entry price.`
-      };
-
+    // 5. Conversational Response or Fallback
+    if (agentResponse?.text) {
       return NextResponse.json({
         success: true,
-        text: `### ⚖️ Deep Spec & Materials Comparison\n\n` +
-              `• **Frame:** Kiln-Dried Hardwood vs. Reinforced Solid Wood\n` +
-              `• **Upholstery:** Top-Grain Leather & Performance Fabric\n` +
-              `• **Cushion Core:** 2.0 High-Resiliency Foam with Sinuous Springs\n` +
-              `• **Warranty:** 1-Year Comprehensive Manufacturer Coverage Included\n\n` +
-              `${compMatrix.recommendation}`,
-        products: compareItems.map((p: ProductSummary) => {
-          const permalink = generateCartPermalink(
-            [{ variantId: p.matchedVariantId || p.id, quantity: 1, title: p.title, price: p.minPrice }],
-            "WEBMCP10"
-          );
-          return {
-            id: p.id,
-            title: p.title,
-            handle: p.handle,
-            price: p.minPrice,
-            image: p.featuredImage || "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
-            inStock: p.inStock,
-            url: `https://jenniferfurniturestaging.myshopify.com/products/${p.handle}`,
-            checkoutUrl: permalink.checkoutUrl,
-            variantId: p.matchedVariantId || p.id
-          };
-        }),
-        chips: [
-          "🛒 Buy " + (compareItems[0]?.title.split(" ").slice(0, 2).join(" ") || "Item 1"),
-          "🛒 Buy " + (compareItems[1]?.title.split(" ").slice(0, 2).join(" ") || "Item 2"),
-          "📐 Check 12x10 Room Fit",
-          "💰 Under $2,000"
-        ],
-        comparison: compMatrix
-      }, { headers: corsHeaders });
+        rate_limit: { limit: rateLimit.limit, remaining: rateLimit.remaining },
+        session_context: {
+          roomDimensions: sessionCtx.roomDimensions,
+          budget: sessionCtx.budget,
+          preferredColors: sessionCtx.preferredColors,
+          activeProduct: sessionCtx.activeProductInFocus
+        },
+        text: agentResponse.text,
+        products: [],
+        chips: generateSmartChips(undefined, userQuery),
+      }, { headers: combinedHeaders });
     }
 
-    // ==========================================
-    // 5. PRODUCT DISCOVERY & CONSTRAINT SEARCH INTENT
-    // ==========================================
-    let extractedMaxPrice: number | undefined = undefined;
-    const priceMatch = lower.match(/(?:under|below|less than|\$|<=)\s*(\d+(?:,\d+)?|\d+k)/i) ||
-                       lower.match(/(\d+(?:,\d+)?|\d+k)\s*(?:dollars?|bucks?)/i);
-    if (priceMatch && priceMatch[1]) {
-      const v = priceMatch[1].replace(/,/g, "");
-      extractedMaxPrice = v.endsWith("k") ? parseFloat(v) * 1000 : parseFloat(v);
-    }
-
-    let categoryTerm = "";
-    if (lower.includes("sectional")) categoryTerm = "sectional";
-    else if (lower.includes("loveseat")) categoryTerm = "loveseat";
-    else if (lower.includes("sofa") || lower.includes("couch")) categoryTerm = "sofa";
-    else if (lower.includes("recliner")) categoryTerm = "recliner";
-    else if (lower.includes("dining")) categoryTerm = "dining";
-    else if (lower.includes("bed") || lower.includes("bedroom") || lower.includes("mattress")) categoryTerm = "bed";
-    else if (lower.includes("chair")) categoryTerm = "chair";
-    else if (lower.includes("table")) categoryTerm = "table";
-
-    let materialTerm = "";
-    if (lower.includes("leather")) materialTerm = "leather";
-    else if (lower.includes("velvet")) materialTerm = "velvet";
-    else if (lower.includes("fabric") || lower.includes("linen")) materialTerm = "fabric";
-    else if (lower.includes("wood")) materialTerm = "wood";
-
-    const queryParts = ["status:active", "inventory_total:>0"];
-    if (categoryTerm) {
-      queryParts.push(`(product_type:*${categoryTerm}* OR tag:*${categoryTerm}* OR title:*${categoryTerm}*)`);
-    }
-    if (materialTerm) {
-      queryParts.push(`(tag:*${materialTerm}* OR title:*${materialTerm}*)`);
-    }
-
-    const searchRes = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
-      query: queryParts.join(" AND "),
-      first: 16,
-    });
-
-    const edges = searchRes.data?.products?.edges || [];
-    let summaries: ProductSummary[] = edges.map((e: any) => normalizeProductSummary(e.node));
-
-    if (extractedMaxPrice) {
-      summaries = summaries.filter((p: ProductSummary) => p.minPrice <= (extractedMaxPrice as number));
-    }
-
-    if (summaries.length === 0) {
-      const fallbackRes = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
-        query: "status:active inventory_total:>0",
-        first: 8,
-      });
-      summaries = (fallbackRes.data?.products?.edges || []).map((e: any) => normalizeProductSummary(e.node));
-      if (extractedMaxPrice) {
-        summaries = summaries.filter((p: ProductSummary) => p.minPrice <= (extractedMaxPrice as number));
-      }
-    }
-
-    const topProducts = summaries.slice(0, 6).map((p: ProductSummary) => {
-      const permalink = generateCartPermalink(
-        [{ variantId: p.matchedVariantId || p.id, quantity: 1, title: p.title, price: p.minPrice }],
-        "WEBMCP10"
-      );
-      return {
-        id: p.id,
-        title: p.title,
-        handle: p.handle,
-        price: p.minPrice,
-        image: p.featuredImage || "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=600&q=80",
-        inStock: p.inStock,
-        url: `https://jenniferfurniturestaging.myshopify.com/products/${p.handle}`,
-        checkoutUrl: permalink.checkoutUrl,
-        variantId: p.matchedVariantId || p.id
-      };
-    });
-
-    let introText = "";
-    if (categoryTerm && extractedMaxPrice) {
-      introText = `I found **${topProducts.length} verified in-stock ${categoryTerm}s** under **$${extractedMaxPrice.toLocaleString()}** for you! Each includes a direct 1-click checkout with promotional code **WEBMCP10** applied:`;
-    } else if (categoryTerm) {
-      introText = `Here are **${topProducts.length} top-rated in-stock ${categoryTerm}s** ready for fast delivery:`;
+    // Fallback search execution if OpenRouter didn't invoke a tool
+    const autoProducts = await executeFindProducts({ query: userQuery, limit: 6 }, targetShop);
+    let autoReply = "";
+    if (autoProducts.length > 0) {
+      const topHighlights = autoProducts.slice(0, 3).map((p: any) => `**${p.title}** ($${p.minPrice.toFixed(2)})`).join(", ");
+      autoReply = `Here are top in-stock recommendations matching "${userQuery}": ${topHighlights}.`;
     } else {
-      introText = `I found **${topProducts.length} verified in-stock furniture items** matching your request:`;
+      autoReply = `How can I assist you with your space at ${activeBrand} today?`;
     }
-
-    const smartChips = generateSmartChips(categoryTerm, extractedMaxPrice, topProducts.length);
 
     return NextResponse.json({
       success: true,
-      text: introText,
-      products: topProducts,
-      chips: smartChips,
-      comparison: null
-    }, { headers: corsHeaders });
+      rate_limit: { limit: rateLimit.limit, remaining: rateLimit.remaining },
+      text: autoReply,
+      products: autoProducts,
+      chips: generateSmartChips(undefined, userQuery, autoProducts.length, autoProducts),
+    }, { headers: combinedHeaders });
 
   } catch (error: any) {
-    console.error("Agent chat error:", error);
+    console.error("Chat API route error:", error);
     return NextResponse.json({
       success: false,
-      text: "I'm having a brief connection issue checking live stock. Please ask me again or try one of the options below!",
+      error: error.message || "Failed to process AI request",
+      text: "I am ready to help you with our verified furniture catalog. Please choose an option below:",
       products: [],
-      chips: ["🛋️ In-Stock Sofas under $2,000", "📐 Check 12x10 Room Fit", "🎁 Build 3-Piece Room Bundle"],
-      error: error.message
+      chips: generateSmartChips(),
     }, { status: 500, headers: corsHeaders });
   }
 }

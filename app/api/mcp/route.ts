@@ -1,8 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleMCPMessage, ALL_MCP_TOOLS } from "@/lib/webmcp/server-protocol";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
+    const rateLimit = checkRateLimit(request, { limit: 30, windowMs: 60 * 60 * 1000 });
+    const corsHeaders = {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key, X-Client-Session",
+      ...rateLimit.headers,
+    };
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: null,
+          error: {
+            code: -32000,
+            message: "Rate limit exceeded. Maximum 30 WebMCP calls per hour per client allowed.",
+          },
+        },
+        { status: 429, headers: corsHeaders }
+      );
+    }
+
     const body = await request.json();
     const host = request.headers.get("host") || "localhost:3000";
     const proto = request.headers.get("x-forwarded-proto") || "http";
@@ -10,11 +33,7 @@ export async function POST(request: NextRequest) {
 
     const response = await handleMCPMessage(body, baseUrl);
     return NextResponse.json(response, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key",
-      },
+      headers: corsHeaders,
     });
   } catch (err: any) {
     return NextResponse.json(

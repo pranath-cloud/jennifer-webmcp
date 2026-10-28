@@ -4,6 +4,9 @@ import {
   CHECK_VARIANT_AVAILABILITY_SCHEMA,
   COMPARE_PRODUCTS_SCHEMA,
   CREATE_CHECKOUT_HANDOFF_SCHEMA,
+  CALCULATE_ROOM_FIT_SCHEMA,
+  COMPARE_PRODUCTS_DEEP_SCHEMA,
+  BUILD_ROOM_BUNDLE_SCHEMA,
   AUTHENTICATE_ADMIN_SCHEMA,
   GET_STORE_REVENUE_SCHEMA,
   GET_INVENTORY_HEALTH_SCHEMA,
@@ -54,6 +57,69 @@ export const ALL_MCP_TOOLS: MCPToolDefinition[] = [
     description:
       "Convert selected product variants into an instant 1-click Shopify direct-to-checkout Cart Permalink URL with discounts.",
     inputSchema: CREATE_CHECKOUT_HANDOFF_SCHEMA,
+    role: "customer",
+  },
+  {
+    name: "calculate_room_fit_and_clearance",
+    description:
+      "Calculate whether a sofa or sectional fits a room with 30-36 inch walking clearance verification.",
+    inputSchema: CALCULATE_ROOM_FIT_SCHEMA,
+    role: "customer",
+  },
+  {
+    name: "generate_room_floorplan",
+    description:
+      "Generates an architectural 2D SVG spatial layout showing wall perimeter, walking clearances, and sofa bounds.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        room_width_feet: { type: "number", default: 14 },
+        room_length_feet: { type: "number", default: 12 },
+        product_title: { type: "string", default: "Luonto Monika Sleeper" },
+        sofa_width_inches: { type: "number", default: 84 },
+        sofa_depth_inches: { type: "number", default: 38 },
+      },
+    },
+    role: "customer",
+  },
+  {
+    name: "match_fabric_and_lighting",
+    description:
+      "Harmonizes room wall paint and window sunlight exposure with manufacturer upholstery fabrics.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        wall_color: { type: "string" },
+        window_exposure: { type: "string" },
+      },
+    },
+    role: "customer",
+  },
+  {
+    name: "get_product_ar_model",
+    description:
+      "Provides Apple QuickLook (.usdz) and Android (.glb) 3D augmented reality model placement links.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        product_handle: { type: "string" },
+      },
+      required: ["product_handle"],
+    },
+    role: "customer",
+  },
+  {
+    name: "compare_products_deep_matrix",
+    description:
+      "Side-by-side spec comparison matrix across frame materials, fabrics, dimensions, and warranty.",
+    inputSchema: COMPARE_PRODUCTS_DEEP_SCHEMA,
+    role: "customer",
+  },
+  {
+    name: "build_coordinated_room_bundle",
+    description:
+      "Pairs an anchor sofa with matching ottoman and accent chair with 15% discount permalink.",
+    inputSchema: BUILD_ROOM_BUNDLE_SCHEMA,
     role: "customer",
   },
 
@@ -199,6 +265,12 @@ export async function handleMCPMessage(message: any, baseUrl: string): Promise<a
       else if (name === "check_variant_availability") apiPath = "/api/products/variant-check";
       else if (name === "compare_products") apiPath = "/api/products/compare";
       else if (name === "create_checkout_handoff") apiPath = "/api/cart/checkout";
+      else if (name === "calculate_room_fit_and_clearance") apiPath = "/api/tools/room-fit";
+      else if (name === "generate_room_floorplan") apiPath = "/api/tools/floorplan";
+      else if (name === "match_fabric_and_lighting") apiPath = "/api/tools/fabric-lighting";
+      else if (name === "get_product_ar_model") apiPath = "/api/tools/ar-model";
+      else if (name === "compare_products_deep_matrix") apiPath = "/api/tools/compare-deep";
+      else if (name === "build_coordinated_room_bundle") apiPath = "/api/tools/bundle-builder";
 
       if (!apiPath) {
         return {

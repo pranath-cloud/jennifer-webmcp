@@ -1,0 +1,38 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+name = "AISearch"
+application_url = "https://webmcp.tendrilsioservices.com"
+embedded = true
+client_id = "91dfed631fc792173b8196ef7cc6442c"
+
+[build]
+automatically_update_urls_on_dev = true
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_products,read_inventory"
+
+[auth]
+redirect_urls = [ "https://webmcp.tendrilsioservices.com/api/auth/callback", "https://webmcp.tendrilsioservices.com/api/auth/callback" ]
+
+[pos]
+embedded = false
+
+[webhooks]
+api_version = "2026-10"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/api/webhooks/shopify"
+
+  # Live-index product webhooks — Shopify auto-registers these on every
+  # OAuth install, so a new shop's catalog stays synced with zero setup.
+  # (Custom-app installs like JenniHome register via scripts/register-webhooks-v2.mjs.)
+  [[webhooks.subscriptions]]
+  topics = ["products/create", "products/update", "products/delete"]
+  uri = "/api/webhooks/shopify"
+
+  # Mandatory privacy/GDPR webhooks — required for OAuth installs
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "/api/webhooks/shopify"

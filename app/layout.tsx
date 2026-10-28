@@ -23,7 +23,7 @@ export default function RootLayout({
         <link rel="ai-plugin" href="/.well-known/ai-plugin.json" />
         <link rel="icon" href="/favicon.ico" sizes="any" />
       </head>
-      <body className="antialiased min-h-screen flex flex-col bg-slate-50 text-slate-900">
+      <body className="antialiased min-h-screen flex flex-col bg-[#09090b] text-[#fafafa]">
         {children}
       </body>
     </html>

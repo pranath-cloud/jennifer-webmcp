@@ -1,405 +1,146 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
-import { StoreHeader } from "@/components/StoreHeader";
-import { InteractiveAgentBar } from "@/components/InteractiveAgentBar";
-import { ProductGrid } from "@/components/ProductGrid";
-import { AgentActivityPanel } from "@/components/AgentActivityPanel";
-import { ComparisonModal } from "@/components/ComparisonModal";
-import { ProductDetailModal } from "@/components/ProductDetailModal";
-import { CheckoutDrawer } from "@/components/CheckoutDrawer";
-import { AdminReportModal } from "@/components/AdminReportModal";
-import { registerAllWebMCPTools } from "@/lib/webmcp/register";
-import { WebMCPAgentRunner } from "@/lib/webmcp/client-agent";
+import React, { useState } from "react";
 import {
-  ProductSummary,
-  ProductDetailed,
-  ProductComparisonMatrix,
-  CheckoutHandoffResult,
-  AgentTelemetryEvent,
-} from "@/lib/types/shopify";
-import { ShieldCheck } from "lucide-react";
+  Sparkles,
+  TrendingUp,
+  Store,
+  ArrowRight,
+  Code,
+  Zap,
+  ExternalLink,
+  Check
+} from "lucide-react";
 
-export default function Home() {
-  // State
-  const [products, setProducts] = useState<ProductSummary[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [isAgentRunning, setIsAgentRunning] = useState<boolean>(false);
-  const [selectedCompareIds, setSelectedCompareIds] = useState<string[]>([]);
-  const [comparisonData, setComparisonData] =
-    useState<ProductComparisonMatrix | null>(null);
-  const [isCompareModalOpen, setIsCompareModalOpen] = useState<boolean>(false);
-  const [detailedProduct, setDetailedProduct] =
-    useState<ProductDetailed | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState<boolean>(false);
-  const [checkoutData, setCheckoutData] = useState<CheckoutHandoffResult | null>(
-    null
-  );
-  const [isCheckoutDrawerOpen, setIsCheckoutDrawerOpen] =
-    useState<boolean>(false);
-  const [isActivityOpen, setIsActivityOpen] = useState<boolean>(false);
-  const [telemetryEvents, setTelemetryEvents] = useState<AgentTelemetryEvent[]>(
-    []
-  );
-  const [registeredTools, setRegisteredTools] = useState<any[]>([]);
+export default function WebMCPPlatformHubPage() {
+  const [copied, setCopied] = useState(false);
 
-  // Admin Modal State
-  const [adminReportData, setAdminReportData] = useState<any>(null);
-  const [adminReportTitle, setAdminReportTitle] = useState<string>("");
-  const [isAdminReportOpen, setIsAdminReportOpen] = useState<boolean>(false);
+  const embedCode = `<script 
+  src="https://webmcp.tendrilsioservices.com/widget.js" 
+  data-shop="jenniferfurniturestaging.myshopify.com" 
+  data-brand="Jennifer Furniture"
+  defer="defer">
+</script>`;
 
-  const agentRunnerRef = useRef<WebMCPAgentRunner | null>(null);
-
-  // Initialize WebMCP tools and listeners on mount
-  useEffect(() => {
-    const registry = registerAllWebMCPTools();
-    agentRunnerRef.current = new WebMCPAgentRunner();
-
-    setRegisteredTools(registry.getRegisteredTools());
-
-    const unsubscribe = registry.subscribe((tools) => {
-      setRegisteredTools(tools);
-    });
-
-    const handleExecuting = (e: any) => {
-      const detail = e.detail;
-      setTelemetryEvents((prev) => [
-        {
-          id: `ev-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          timestamp: new Date().toISOString(),
-          toolName: detail.name,
-          inputs: detail.args,
-          latencyMs: 0,
-          status: "executing",
-          summary: `WebMCP tool "${detail.name}" invoked by agent.`,
-        },
-        ...prev,
-      ]);
-    };
-
-    const handleExecuted = (e: any) => {
-      const detail = e.detail;
-      setTelemetryEvents((prev) => {
-        const updated = [...prev];
-        const target = updated.find(
-          (ev) => ev.toolName === detail.name && ev.status === "executing"
-        );
-        if (target) {
-          target.status = detail.success ? "success" : "error";
-          target.latencyMs = detail.latencyMs || 15;
-          target.responsePreview = detail.result || detail.error;
-        }
-        return updated;
-      });
-    };
-
-    window.addEventListener("modelcontext-tool-executing", handleExecuting);
-    window.addEventListener("modelcontext-tool-executed", handleExecuted);
-
-    loadInitialProducts();
-
-    return () => {
-      unsubscribe();
-      window.removeEventListener("modelcontext-tool-executing", handleExecuting);
-      window.removeEventListener("modelcontext-tool-executed", handleExecuted);
-    };
-  }, []);
-
-  const loadInitialProducts = async () => {
-    setIsLoading(true);
-    try {
-      const res = await fetch("/api/products/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: "sectional",
-          in_stock_only: true,
-          limit: 9,
-        }),
-      });
-      const data = await res.json();
-      if (data.products) {
-        setProducts(data.products);
-      }
-    } catch (err) {
-      console.error("Initial load error:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Run autonomous agent scenario (Customer or Admin)
-  const handleRunScenario = async (
-    scenario: "sectional_budget" | "sofa_4000" | "admin_revenue" | "admin_inventory"
-  ) => {
-    if (!agentRunnerRef.current || isAgentRunning) return;
-
-    setIsAgentRunning(true);
-    setIsActivityOpen(true);
-
-    try {
-      await agentRunnerRef.current.runAutonomousFlow(
-        scenario,
-        (event) => {
-          setTelemetryEvents((prev) => [
-            event,
-            ...prev.filter((e) => e.id !== event.id),
-          ]);
-        },
-        (updatedProducts) => {
-          setProducts(updatedProducts);
-        },
-        (compData) => {
-          setComparisonData(compData);
-          setIsCompareModalOpen(true);
-        },
-        (chData) => {
-          setCheckoutData(chData);
-          setIsCheckoutDrawerOpen(true);
-        },
-        (adminData, title) => {
-          setAdminReportData(adminData);
-          setAdminReportTitle(title);
-          setIsAdminReportOpen(true);
-        }
-      );
-    } catch (err) {
-      console.error("Scenario execution error:", err);
-    } finally {
-      setIsAgentRunning(false);
-    }
-  };
-
-  // Custom search prompt
-  const handleCustomSearch = async (queryText: string) => {
-    setIsLoading(true);
-    setIsAgentRunning(true);
-    try {
-      const startTime = performance.now();
-      const res = await fetch("/api/products/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: queryText,
-          in_stock_only: true,
-          limit: 12,
-        }),
-      });
-      const data = await res.json();
-      const lat = Math.round(performance.now() - startTime);
-
-      if (data.products) {
-        setProducts(data.products);
-      }
-
-      setTelemetryEvents((prev) => [
-        {
-          id: `ev-${Date.now()}`,
-          timestamp: new Date().toISOString(),
-          toolName: "find_products_by_constraints",
-          inputs: { query: queryText },
-          latencyMs: lat,
-          status: "success",
-          summary: `Filtered ${data.count || 0} catalog items matching "${queryText}".`,
-          responsePreview: data.products,
-        },
-        ...prev,
-      ]);
-    } catch (err) {
-      console.error("Search error:", err);
-    } finally {
-      setIsLoading(false);
-      setIsAgentRunning(false);
-    }
-  };
-
-  const handleToggleCompare = (id: string) => {
-    setSelectedCompareIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id].slice(0, 4)
-    );
-  };
-
-  const handleOpenCompareModal = async () => {
-    if (selectedCompareIds.length < 2) return;
-    setIsLoading(true);
-    try {
-      const res = await fetch("/api/products/compare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_ids: selectedCompareIds }),
-      });
-      const data = await res.json();
-      if (data.data) {
-        setComparisonData(data.data);
-        setIsCompareModalOpen(true);
-      }
-    } catch (err) {
-      console.error("Compare error:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInspectDetails = async (id: string) => {
-    try {
-      const res = await fetch("/api/products/details", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ product_id: id }),
-      });
-      const data = await res.json();
-      if (data.product) {
-        setDetailedProduct(data.product);
-        setIsDetailModalOpen(true);
-      }
-    } catch (err) {
-      console.error("Details error:", err);
-    }
-  };
-
-  const handleDirectAddToCart = async (
-    product: ProductSummary,
-    color?: string
-  ) => {
-    try {
-      const variantId = product.matchedVariantId || product.id;
-      const res = await fetch("/api/cart/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: [
-            {
-              variant_id: variantId,
-              quantity: 1,
-              title: `${product.title}${color ? ` - ${color}` : ""}`,
-              price: product.minPrice,
-            },
-          ],
-          discount_code: "WEBMCP10",
-        }),
-      });
-      const data = await res.json();
-      if (data.data) {
-        setCheckoutData(data.data);
-        setIsCheckoutDrawerOpen(true);
-      }
-    } catch (err) {
-      console.error("Cart error:", err);
-    }
+  const handleCopy = () => {
+    navigator.clipboard.writeText(embedCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {/* Header */}
-      <StoreHeader
-        toolCount={registeredTools.length}
-        cartCount={checkoutData?.lineItems.length || 0}
-        onOpenCart={() => setIsCheckoutDrawerOpen(true)}
-        onOpenActivity={() => setIsActivityOpen(true)}
-      />
-
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Interactive WebMCP Playground Bar */}
-        <InteractiveAgentBar
-          isRunning={isAgentRunning}
-          onRunScenario={handleRunScenario}
-          onCustomSearch={handleCustomSearch}
-          onReset={loadInitialProducts}
-        />
-
-        {/* Product Catalog Grid */}
-        <ProductGrid
-          products={products}
-          isLoading={isLoading}
-          selectedCompareIds={selectedCompareIds}
-          onToggleCompare={handleToggleCompare}
-          onInspectDetails={handleInspectDetails}
-          onOpenCompareModal={handleOpenCompareModal}
-          onDirectAddToCart={handleDirectAddToCart}
-        />
-      </main>
-
-      {/* Modals & Drawers */}
-      <ComparisonModal
-        isOpen={isCompareModalOpen}
-        onClose={() => setIsCompareModalOpen(false)}
-        comparison={comparisonData}
-        onSelectForCheckout={(prodId) => {
-          setIsCompareModalOpen(false);
-          const p = products.find((item) => item.id === prodId);
-          if (p) handleDirectAddToCart(p);
-        }}
-      />
-
-      <ProductDetailModal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        product={detailedProduct}
-        onAddToCart={(variantId, title, price) => {
-          setIsDetailModalOpen(false);
-          fetch("/api/cart/checkout", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              items: [{ variant_id: variantId, quantity: 1, title, price }],
-              discount_code: "WEBMCP10",
-            }),
-          })
-            .then((r) => r.json())
-            .then((d) => {
-              if (d.data) {
-                setCheckoutData(d.data);
-                setIsCheckoutDrawerOpen(true);
-              }
-            });
-        }}
-      />
-
-      <CheckoutDrawer
-        isOpen={isCheckoutDrawerOpen}
-        onClose={() => setIsCheckoutDrawerOpen(false)}
-        checkoutData={checkoutData}
-      />
-
-      <AdminReportModal
-        isOpen={isAdminReportOpen}
-        onClose={() => setIsAdminReportOpen(false)}
-        title={adminReportTitle}
-        data={adminReportData}
-      />
-
-      <AgentActivityPanel
-        isOpen={isActivityOpen}
-        onClose={() => setIsActivityOpen(false)}
-        events={telemetryEvents}
-        registeredTools={registeredTools}
-      />
-
-      {/* Footer */}
-      <footer className="mt-16 bg-navy-950 text-white border-t border-navy-800 py-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-6">
-          <div>
-            <div className="font-extrabold text-base tracking-tight flex items-center gap-2">
-              <span>AgentCart Enterprise</span>
-              <span className="text-[10px] bg-brand-600 px-2 py-0.5 rounded font-mono">
-                W3C WebMCP & MCP Standard
-              </span>
-            </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Zero-Config Agent-Native Storefront connected to Shopify Plus (14,447 items).
-            </p>
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* Top Navigation */}
+      <header className="h-16 border-b border-slate-800/80 bg-slate-900/90 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-50">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-sky-500/20">
+            <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <div className="flex items-center gap-4 text-xs text-gray-400">
-            <span className="flex items-center gap-1 text-emerald-400 font-mono">
-              <ShieldCheck className="w-4 h-4" />
-              Shopify Plus Staging
+          <div className="font-bold text-sm tracking-tight flex items-center gap-2">
+            <span>WebMCP Platform</span>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20 font-mono">
+              AI Search Engine
             </span>
-            <span>|</span>
-            <span className="font-mono text-cyan-300">AWS EC2 & Cloudflare Ready</span>
           </div>
         </div>
-      </footer>
+
+        <div className="flex items-center gap-3">
+          <a
+            href="https://jenniferfurniturestaging.myshopify.com"
+            target="_blank"
+            className="text-xs px-3.5 py-1.5 rounded-lg border border-slate-700 bg-slate-800/50 hover:bg-slate-800 text-slate-300 flex items-center gap-1.5 transition-all"
+          >
+            <span>Live Staging Store</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <main className="flex-1 max-w-5xl w-full mx-auto p-8 space-y-10">
+        <div className="text-center space-y-3 pt-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-mono">
+            <Zap className="w-3.5 h-3.5" />
+            <span>100% Native AI Search Engine</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-100 max-w-2xl mx-auto leading-tight">
+            WebMCP Multi-Store AI Search & Analytics
+          </h1>
+          <p className="text-sm text-slate-400 max-w-xl mx-auto leading-relaxed">
+            Powers natural language semantic search directly inside your Shopify theme without changing your native CSS or templates.
+          </p>
+        </div>
+
+        {/* Feature Cards Grid (2 Focused Cards) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+          {/* Analytics Card */}
+          <a
+            href="/analytics"
+            className="group p-6 rounded-2xl bg-gradient-to-b from-slate-900/80 to-slate-900/40 border border-slate-800 hover:border-emerald-500/50 transition-all flex flex-col justify-between space-y-6 shadow-xl"
+          >
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-100 group-hover:text-emerald-400 transition-colors">
+                Search Telemetry & Customer Demand Analytics
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Track shopper search queries, extracted intent (colors, materials, prices), conversion click-throughs, and unmet inventory demand gaps in real-time.
+              </p>
+            </div>
+            <div className="text-xs font-bold text-emerald-400 flex items-center gap-1">
+              <span>View Search Analytics</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </a>
+
+          {/* Multi-Store Manager Card */}
+          <a
+            href="/stores"
+            className="group p-6 rounded-2xl bg-gradient-to-b from-slate-900/80 to-slate-900/40 border border-slate-800 hover:border-sky-500/50 transition-all flex flex-col justify-between space-y-6 shadow-xl"
+          >
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 group-hover:scale-105 transition-transform">
+                <Store className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-bold text-slate-100 group-hover:text-sky-400 transition-colors">
+                Multi-Store Registry & Credentials
+              </h3>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                Connect and manage multiple Shopify stores. Configure isolated shop domains, API access tokens, and generate 1-line script tags.
+              </p>
+            </div>
+            <div className="text-xs font-bold text-sky-400 flex items-center gap-1">
+              <span>Manage Connected Stores</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </a>
+        </div>
+
+        {/* 1-Line Embed Script Box */}
+        <div className="p-6 rounded-2xl bg-slate-900/60 border border-slate-800 shadow-xl space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Code className="w-4 h-4 text-sky-400" />
+              <h3 className="text-sm font-bold text-slate-200">1-Line Shopify Storefront Embed</h3>
+            </div>
+            <button
+              onClick={handleCopy}
+              className="text-xs px-3 py-1.5 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 font-bold flex items-center gap-1.5 transition-all"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Code className="w-3.5 h-3.5" />}
+              <span>{copied ? "Copied to Clipboard!" : "Copy Script Tag"}</span>
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Paste this tag into your Shopify store&apos;s <code className="text-sky-300 font-mono">theme.liquid</code> before <code className="text-sky-300 font-mono">&lt;/head&gt;</code> to activate AI search:
+          </p>
+          <pre className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-emerald-400 overflow-x-auto">
+            {embedCode}
+          </pre>
+        </div>
+      </main>
     </div>
   );
 }
