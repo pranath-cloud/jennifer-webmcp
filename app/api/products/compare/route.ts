@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
 import { GET_PRODUCTS_BY_IDS_QUERY } from "@/lib/shopify/queries";
 import { normalizeProductDetailed, buildComparisonMatrix } from "@/lib/shopify/normalizer";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { product_ids = [] } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     if (!Array.isArray(product_ids) || product_ids.length === 0) {
       return NextResponse.json(
@@ -24,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     const response = await shopifyGraphQL(GET_PRODUCTS_BY_IDS_QUERY, {
       ids: formattedGids,
-    });
+    }, { shopDomain });
 
     if (response.errors && response.errors.length > 0) {
       return NextResponse.json(

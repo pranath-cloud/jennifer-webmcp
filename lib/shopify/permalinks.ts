@@ -13,9 +13,10 @@ export function generateCartPermalink(
     price?: number;
   }>,
   discountCode?: string | null,
-  note?: string | null
+  note?: string | null,
+  shopDomainOverride?: string | null
 ): CheckoutHandoffResult {
-  const shopDomain = getShopDomain();
+  const shopDomain = shopDomainOverride || getShopDomain();
 
   const formattedLineItems = items.map((item) => {
     // Extract numeric ID from Global ID if provided

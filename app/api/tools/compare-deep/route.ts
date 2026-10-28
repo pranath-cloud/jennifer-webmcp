@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
 import { generateCartPermalink } from "@/lib/shopify/permalinks";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { product_handles = [] } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     if (!Array.isArray(product_handles) || product_handles.length < 2) {
       return NextResponse.json(
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
     const variables: Record<string, string> = {};
     handlesToQuery.forEach((h, i) => { variables[`h${i}`] = h; });
 
-    const res = await shopifyGraphQL<any>(query, variables);
+    const res = await shopifyGraphQL<any>(query, variables, { shopDomain });
     const products: any[] = [];
 
     handlesToQuery.forEach((_, i) => {
@@ -93,7 +95,9 @@ export async function POST(request: NextRequest) {
         const firstVariantId = p.variants?.edges?.[0]?.node?.id || p.id;
         const permalink = generateCartPermalink(
           [{ variantId: firstVariantId, quantity: 1, title: p.title, price: minPrice }],
-          "WEBMCP10"
+          "WEBMCP10",
+          undefined,
+          shopDomain
         );
 
         products.push({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { handleMCPMessage, ALL_MCP_TOOLS } from "@/lib/webmcp/server-protocol";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 export async function POST(request: NextRequest) {
   try {
@@ -8,7 +9,7 @@ export async function POST(request: NextRequest) {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key, X-Client-Session",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key, X-Client-Session, X-Shop-Domain",
       ...rateLimit.headers,
     };
 
@@ -31,7 +32,12 @@ export async function POST(request: NextRequest) {
     const proto = request.headers.get("x-forwarded-proto") || "http";
     const baseUrl = `${proto}://${host}`;
 
-    const response = await handleMCPMessage(body, baseUrl);
+    // Tenant resolution — tool args may carry shop_domain explicitly; absent
+    // that, the caller's Origin storefront (e.g. jennihome.com) maps to the
+    // right tenant instead of silently serving the default store's catalog.
+    const shopDomain = resolveRequestShopDomain(request, { ...(body || {}), ...(body?.params?.arguments || {}) });
+
+    const response = await handleMCPMessage(body, baseUrl, shopDomain);
     return NextResponse.json(response, {
       headers: corsHeaders,
     });
@@ -80,7 +86,7 @@ export async function OPTIONS() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Admin-Key, X-Shop-Domain, X-Client-Session",
     },
   });
 }

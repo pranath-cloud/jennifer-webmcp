@@ -154,7 +154,7 @@ export const ALL_MCP_TOOLS: MCPToolDefinition[] = [
   },
 ];
 
-export async function handleMCPMessage(message: any, baseUrl: string): Promise<any> {
+export async function handleMCPMessage(message: any, baseUrl: string, shopDomain?: string): Promise<any> {
   const { jsonrpc = "2.0", id, method, params = {} } = message;
 
   // 1. initialize
@@ -280,10 +280,31 @@ export async function handleMCPMessage(message: any, baseUrl: string): Promise<a
         };
       }
 
+      // Scope the delegated API call to the resolved tenant — tool callers
+      // may also pass shop_domain explicitly, which always wins.
+      const scopedArgs = { ...args };
+      if (shopDomain && !scopedArgs.shop_domain) scopedArgs.shop_domain = shopDomain;
+
+      // The schema advertises structured constraint fields but the search
+      // pipeline keys off a natural-language query — synthesize one when the
+      // caller only sent structured args ("leather sofa under $2000").
+      if (name === "find_products_by_constraints" && !String(scopedArgs.query || "").trim()) {
+        const parts: string[] = [];
+        if (scopedArgs.material) parts.push(String(scopedArgs.material));
+        if (Array.isArray(scopedArgs.features)) parts.push(...scopedArgs.features.map(String));
+        if (scopedArgs.category) parts.push(String(scopedArgs.category));
+        if (scopedArgs.min_price) parts.push(`from $${scopedArgs.min_price}`);
+        if (scopedArgs.max_price) parts.push(`under $${scopedArgs.max_price}`);
+        if (parts.length) scopedArgs.query = parts.join(" ");
+      }
+
       const res = await fetch(`${baseUrl}${apiPath}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(args),
+        headers: {
+          "Content-Type": "application/json",
+          ...(shopDomain ? { "X-Shop-Domain": shopDomain } : {}),
+        },
+        body: JSON.stringify(scopedArgs),
       });
       const data = await res.json();
 

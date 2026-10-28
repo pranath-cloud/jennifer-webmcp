@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
 import { GET_PRODUCT_DETAILS_QUERY } from "@/lib/shopify/queries";
 import { VariantCheckResult } from "@/lib/types/shopify";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { product_id, selected_options = {} } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     if (!product_id) {
       return NextResponse.json(
@@ -22,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     const response = await shopifyGraphQL(GET_PRODUCT_DETAILS_QUERY, {
       id: targetGid,
-    });
+    }, { shopDomain });
 
     const productNode = response.data?.product;
     if (!productNode) {

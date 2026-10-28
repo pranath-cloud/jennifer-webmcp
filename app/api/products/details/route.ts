@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
 import { GET_PRODUCT_DETAILS_QUERY, SEARCH_PRODUCTS_QUERY } from "@/lib/shopify/queries";
 import { normalizeProductDetailed } from "@/lib/shopify/normalizer";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { product_id, handle } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     let targetGid = product_id;
 
@@ -15,7 +17,7 @@ export async function POST(request: NextRequest) {
       const searchRes = await shopifyGraphQL(SEARCH_PRODUCTS_QUERY, {
         query: `handle:${handle.trim()}`,
         first: 1,
-      });
+      }, { shopDomain });
       const firstEdge = searchRes.data?.products?.edges?.[0];
       if (firstEdge) {
         targetGid = firstEdge.node.id;
@@ -36,7 +38,7 @@ export async function POST(request: NextRequest) {
 
     const response = await shopifyGraphQL(GET_PRODUCT_DETAILS_QUERY, {
       id: targetGid,
-    });
+    }, { shopDomain });
 
     if (response.errors && response.errors.length > 0) {
       return NextResponse.json(

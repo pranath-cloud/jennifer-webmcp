@@ -3,6 +3,7 @@ import { shopifyGraphQL } from "@/lib/shopify/client";
 import { SEARCH_PRODUCTS_QUERY } from "@/lib/shopify/queries";
 import { normalizeProductSummary } from "@/lib/shopify/normalizer";
 import { generateCartPermalink } from "@/lib/shopify/permalinks";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +19,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { base_product_handle = "monika-sleeper-sofa", budget_cap = 3500 } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     // 1. Fetch the Anchor Sofa
     const anchorRes = await shopifyGraphQL<any>(`
@@ -42,7 +44,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-    `, { handle: base_product_handle });
+    `, { handle: base_product_handle }, { shopDomain });
 
     const anchor = anchorRes.data?.productByHandle;
     if (!anchor) {
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
     const searchRes = await shopifyGraphQL<any>(SEARCH_PRODUCTS_QUERY, {
       query: "status:active inventory_total:>0 (product_type:*chair* OR product_type:*ottoman* OR tag:*chair* OR tag:*ottoman*)",
       first: 10,
-    });
+    }, { shopDomain });
 
     const edges = searchRes.data?.products?.edges || [];
     const candidates = edges.map((e: any) => normalizeProductSummary(e.node));
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
       { variantId: chairVariantId, quantity: 1, title: matchingChair?.title || "Matching Accent Chair", price: chairPrice },
     ];
 
-    const permalink = generateCartPermalink(bundleItems, "WEBMCP15");
+    const permalink = generateCartPermalink(bundleItems, "WEBMCP15", undefined, shopDomain);
 
     return NextResponse.json({
       success: true,

@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateCartPermalink } from "@/lib/shopify/permalinks";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { items = [], discount_code, note } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -29,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const handoff = generateCartPermalink(formattedItems, discount_code, note);
+    const handoff = generateCartPermalink(formattedItems, discount_code, note, shopDomain);
 
     return NextResponse.json({
       success: true,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { shopifyGraphQL } from "@/lib/shopify/client";
 import { GET_PRODUCT_DETAILS_QUERY } from "@/lib/shopify/queries";
 import { normalizeProductDetailed } from "@/lib/shopify/normalizer";
+import { resolveRequestShopDomain } from "@/lib/request-shop";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
       product_handle,
       include_coffee_table = true,
     } = body;
+    const shopDomain = resolveRequestShopDomain(request, body);
 
     if (!product_handle) {
       return NextResponse.json(
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-    `, { handle: product_handle });
+    `, { handle: product_handle }, { shopDomain });
 
     const prod = res.data?.productByHandle;
     if (!prod) {
